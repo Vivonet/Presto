@@ -24,7 +24,7 @@ That's it! Provided your remote document looks something like this:
 
 	{
 		"name":"Logan",
-		"email":"logan@test.com",
+		"email":"logan@example.com",
 		"age":33,
 	}
 
