@@ -4,7 +4,7 @@ A non-intrusive Objective-C REST framework that just works like magic!
 ♫ “If I could wave my magic wand…” ♫
 https://youtu.be/iwIdXJPXpMU
 
-# What is Presto?
+## What is Presto?
 Presto is Vivonet’s core iOS REST bridge that powers our mobile ordering application on iOS. Presto is designed to non-intrusively attach itself to any existing data model and can automatically load your existing objects with data from a remote REST source with minimal code.
 
 For example, loading an object with a remote JSON definition is as simple as this:
@@ -44,15 +44,15 @@ Presto has a few core strengths and design goals:
 0. Presto should make your coding more intuitive and less bug-prone. With proper use of completions and depenencies, your app will also behave consistently and react automatically to remote changes.
 0. In-place loading means you can refresh your objects from their server definitions without blowing away other local data. Working on a single instance of an object means more predictable behavior and instant compatibility with a wide range of existing designs.
 
-#Disclaimer
+## Disclaimer
 This project is in its infancy and is constantly changing. Expect breaking changes. You’re more than welcome to depend on Presto in your projects, but for now you should link against a specific build and be aware that updating Presto may break your existing code. I will try to keep a changelog of all breaking changes introduced from version to version to facilitate new version adoption.
 
-# Installation
+## Installation
 Presto is contained for the most part in a single pair of files: Presto.h/m. There is also a handy (but optional) NSObject+Presto.h/m category which exposes Presto methods on NSObject. This category is designed to allow for easy customization and selection of the methods that suit your project. You can expose as many or as few of these category methods as you like.
 
 To install Presto, just copy Presto.h/m into your project and import it where necessary. It is recommended that you #import the optional NSObject+Presto.h in your project’s precompiled header (.pch) file to make accessing Presto on any object automatic from anywhere in your project.
 
-# The Basics
+## The Basics
 Presto works by attaching a non-intrusive "presto" metadata property dynamically onto any object that accesses it. Presto makes this property available on every NSObject in your code and lazy-loads itself the first time it is accessed. Presto uses the metadata to remember things about the object’s remote source, including its URL, HTTP method, request body, and generic request and response transformers.
 
 You typically start by declaring an object’s remote location with one of four methods:
@@ -77,7 +77,7 @@ You can call these methods on any object (so long as the NSObject+Presto categor
 
 The **objectOfClass:** and **arrayOfClass:** methods, unlike the other configuration methods, return a reference to the host object itself (rather than a PrestoMetadata object), instantiating one on the fly if it doesn’t yet exist. This allows you to easily define your class properties in a single line. Presto metadata objects can create their own host objects if needed, or can be attached to existing instances just as easily.
 
-# Lazy Loading
+## Lazy Loading
 Pretty much everything in Presto is lazy-loaded on the fly only when it is observed. Simply defining the source of an object does not immediately result in a call to the server. This only happens when you attach a completion or dependency to an object, which are the two ways in which Presto objects should be observed.
 
 	self.myProfile = [[Presto getFromURL:url] objectOfClass:[MyProfile class]];
