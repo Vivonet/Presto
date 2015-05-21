@@ -28,9 +28,17 @@ That's it! Provided your remote document looks something like this:
 		"age":33,
 	}
 
-You can now attach completions and/or dependencies to self.profile and access the loaded properties from within the attached block.
+You can now attach completions and/or dependencies to self.profile and access the loaded properties from within the attached block. Presto uses blocks to decouple the asynchronous loading of a property from its use. You should always access remotely-defined properties from within a completion or dependency block, but they're simple to use and you can add as many of these as you want! Here's an example of a dependency:
 
-Note that MyProfile inherits from NSObject, not some Presto class. With Presto you can load objects of *any* class, not just those that derive from a specific base class.
+	[self.profile onChange:^(NSObject *result) {
+		self.nameLabel.text = self.profile.name;
+		self.emailLabel.text = self.profile.email;
+		…
+	}];
+
+This block will be called whenever self.profile is reloaded from its remote source (but only if there are actually changes), allowing your user interface to automatically keep itself up to date with remote changes.
+
+Note that MyProfile inherits from NSObject, not some Presto class. With Presto you can load objects of *any* class (even ones you don’t control), not just those that derive from a specific base class.
 
 Presto’s aim is to make loading and manipulating remote data as simple as possible and does so by interacting with the Objective-C runtime to dynamically match server-side JSON attributes to client-side Objective-C properties.
 
@@ -79,8 +87,17 @@ You can call these methods on any object (so long as the NSObject+Presto categor
 
 The **objectOfClass:** and **arrayOfClass:** methods, unlike the other configuration methods, return a reference to the host object itself (rather than a PrestoMetadata object), instantiating one on the fly if it doesn’t yet exist. This allows you to easily define your class properties in a single line. Presto metadata objects can create their own host objects if needed, or can be attached to existing instances just as easily.
 
+## Presto Metadata
+Presto achieves much of its magic by installing a single global “presto“ ivar to every NSObject-derived object in your app. This property is lazy-loaded and only installed if it is actually accessed (and the footprint of accessing it is tiny).
+
+The presto property acts as your point of interface into the Presto engine from any object. You can use it to perform REST related tasks and get source and state information about a remotely-defined object. You can also NSLog it to get a quick description of the state and source of your object.
+
+The NSObject+Presto category extends many of the PrestoMetadata methods onto NSObject for convenience. You don’t need to use the category if you don't want to, or you can customize it if it conflicts with your own NSObject overrides.
+
+
+
 ## Lazy Loading
-Pretty much everything in Presto is lazy-loaded on the fly only when it is observed. Simply defining the source of an object does not immediately result in a call to the server. This only happens when you attach a completion or dependency to an object, which are the two ways in which Presto objects should be observed.
+Pretty much everything in Presto is lazy-loaded on the fly only when it is observed. Simply defining the source of an object does not immediately result in a call to the server. This happens when you attach a completion or dependency to an object, which are the two ways in which Presto objects should be observed.
 
 	self.myProfile = [[Presto getFromURL:url] objectOfClass:[MyProfile class]];
 	// self.myProfile.name is nil here because we haven’t yet loaded the object
