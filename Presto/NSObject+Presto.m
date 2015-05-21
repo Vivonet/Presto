@@ -22,7 +22,7 @@
 
 //    ( Y )
 //   (  . .)
-//  o(") (")
+//  o(")_(")
 //   PRESTO!
 //  
 //  An Objective-C REST Framework
@@ -66,32 +66,12 @@
 	return [self.presto deleteFromURL:url];
 }
 
-//- (void)loadFromURL:(NSURL *)url {
-//	return [self.presto loadFromURL:url];
-//}
-//
-//- (PrestoSource *)loadFromURL:(NSURL *)url withMethod:(NSString *)method object:(id)object {
-//	return [self.presto loadFromURL:url withMethod:method object:object];
-//}
-//
-////- (void)loadFromURL:(NSURL *)url POST:(id)post {
-////	[self.presto loadFromURL:url POST:post];
-////}
-////
-////- (void)loadFromURL:(NSURL *)url PUT:(id)put {
-////	[self.presto loadFromURL:url PUT:put];
-////}
-//
-////- (void)loadProperty:(NSString *)propertyName fromURL:(NSURL *)url {
-////	[self.presto loadProperty:propertyName fromURL:url];
-////}
-
 - (void)loadWithJSONString:(NSString *)json {
 	[self.presto loadWithJSONString:json];
 }
 
-- (void)loadWithDictionary:(NSDictionary *)dictionary {
-	[self.presto loadWithDictionary:dictionary];
+- (BOOL)loadWithDictionary:(NSDictionary *)dictionary {
+	return [self.presto loadWithDictionary:dictionary];
 }
 
 #pragma mark -
@@ -114,22 +94,6 @@
 	return [self.presto onComplete:success failure:failure];
 }
 
-//- (void)addCompletion:(PrestoCallback)block {
-//	[self.presto addCompletion:block];
-//}
-//
-//- (void)addCompletion:(PrestoCallback)block withTarget:(id)target {
-//	[self.presto addCompletion:block withTarget:target];
-//}
-//
-//- (void)addCompletion:(PrestoCallback)success failure:(PrestoCallback)failure {
-//	[self.presto addCompletion:success failure:failure];
-//}
-//
-//- (void)addCompletion:(PrestoCallback)success failure:(PrestoCallback)failure withTarget:(id)target {
-//	[self.presto addCompletion:success failure:failure withTarget:target];
-//}
-
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency {
 	return [self.presto onChange:dependency];
 }
@@ -139,15 +103,3 @@
 }
 
 @end
-
-//@implementation NSArray (Presto)
-//
-//- (void)addCompletion:(PrestoCallback)completion {
-//	[self.presto addCompletion:completion];
-//}
-//
-//- (void)addCompletion:(PrestoCallback)success failure:(PrestoCallback)failure {
-//	[self.presto addCompletion:success failure:failure];
-//}
-//
-//@end

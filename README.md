@@ -5,11 +5,11 @@ A non-intrusive Objective-C REST framework that just works like magic!
 https://youtu.be/iwIdXJPXpMU
 
 ## What is Presto?
-Presto is Vivonet’s core iOS REST bridge that powers our mobile ordering application on iOS. Presto is designed to non-intrusively attach itself to any existing data model and can automatically load your existing objects with data from a remote REST source with minimal code.
+Presto is an iOS REST bridge that eliminates much of the tedium of communicating with a remote REST source in a way that is already immediately intuitive to developers, without actually abstracting or obfuscating the REST interface itself. Presto simply reduces the time and steps needed to do what you already want to do, removing the mundane and time-wasting work of handling things like communication, serialization and change handling, and ties your remotely hosted JSON data directly to native objects via the Objective-C runtime. Presto is designed to non-intrusively tie itself into your existing data model and can automatically load your existing class objects with data from a remote source with minimal setup and a very easy learning curve.
 
 For example, loading an object with a remote JSON definition is as simple as this:
 
-	@interface MyProfile
+	@interface MyProfile : NSObject
 	
 	@property (strong, nonatomic) NSString *name;
 	@property (strong, nonatomic) NSString *email;
@@ -29,6 +29,8 @@ That's it! Provided your remote document looks something like this:
 	}
 
 You can now attach completions and/or dependencies to self.profile and access the loaded properties from within the attached block.
+
+Note that MyProfile inherits from NSObject, not some Presto class. With Presto you can load objects of *any* class, not just those that derive from a specific base class.
 
 Presto’s aim is to make loading and manipulating remote data as simple as possible and does so by interacting with the Objective-C runtime to dynamically match server-side JSON attributes to client-side Objective-C properties.
 
@@ -86,9 +88,18 @@ Pretty much everything in Presto is lazy-loaded on the fly only when it is obser
 		// self.myProfile.name is now filled in because we are inside a completion block
 	}];
 
-You attach a completion to an object via the **onComplete:** method. A completion will only be called once after it is attached, but is guaranteed to be called eventually, whatever the result of the server call may be, including failure.
+## Completions
+A completion allows you to decouple the code that handles a remote object from the code that loads it. You attach a completion to an object via the **onComplete:** method. A completion will only be called once after it is attached, but is guaranteed to be called eventually, whatever the result of the server call may be, including failure. If an object is already loaded, the completion will be executed immediately and the object will not be reloaded. If you want to force a refresh of the object, use **loadWithCompletion:** or simply call **load** before attaching the completion (which is exactly what loadWithCompletion: does).
 
-If you want a block of code to be called every time an object (successfully) changes, use a dependency instead, by instead passing the block to **onChange:**. You can also pass an optional weak target to **onChange:** that will tie the dependency block to the existence of the target. If the target disappears, the block will no longer be called. Typically the current view controller is passed as this parameter.
+## Dependencies
+If you want a block of code to be called every time an object changes, use a dependency instead, by instead passing the same block to **onChange:**. You can also pass an optional weak target to **onChange:** that will existentially tie the given block to the existence of the target. If the target disappears, the block will no longer be called. Typically the current view or view controller is passed as this parameter, because if the view disappears, there's probably nothing to update anyway.
+
+## What Doesn’t Presto Do?
+As I've mentioned, Presto is still in its infancy. There are still some features and abilities that are planned or being considered that are not yet part of the framework. One such obvious omission is that of converters. There is no layer of conversion happening between a payload and your local properties.
+
+For example, if your payload represents a date as a string or long, you'll need to convert these manually for now. The best place to do this is by adding a second local property of the desired type (e.g. NSDate) and adding a setter (or overriding setValue:forKey:) in your model class to set the converted value of the date property whenever the original property is set.
+
+This is definitely one area I plan on improving soon, so hopefully we won't be stuck doing this for too much longer.
 
 * * *
 

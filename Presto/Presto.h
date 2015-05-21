@@ -22,7 +22,7 @@
 
 //    ( Y )
 //   (  . .)
-//  o(") (")
+//  o(")_(")
 //   PRESTO!
 //  
 //  An Objective-C REST Framework
@@ -43,6 +43,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 // note that protocols can only be attached to object types, so you should declare your property as NSNumber if you need to attach a protocol to a numerical or boolean type.
 @protocol Identifying; // TODO: this will eventually be used to more efficiently equate objects when an array is loaded; for now only isEqual: is supported
 @protocol DoNotSerialize;
+// should we add a Serialize property as well to act as a whitelist?
 
 @protocol PrestoDelegate
 
@@ -54,11 +55,16 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (void)connectionEstablished;
 - (void)authenticationFailed;		// this is meant to alert the app globally that an authentication has failed, not actually handle the failure
 
+- (NSURL *)identifyingURL;
+//- (NSString *)identifyingTemplate; // return something like "http://.../%@"
+
 @end
 
 @interface Presto : NSObject
 
 @property (weak, nonatomic) NSObject<PrestoDelegate> *delegate;
+@property (nonatomic) NSInteger activeRequests;
+@property (nonatomic) BOOL showActivityIndicator; // default is YES
 
 + (Presto *)defaultInstance;
 
@@ -86,9 +92,9 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (void)addGlobalRequestTransformer:(PrestoRequestTransformer)transformer;
 - (void)addGlobalResponseTransformer:(PrestoResponseTransformer)transformer;
 
+// i had originally designed configurations to happen at a class level, but have since moved to favor source-based configuration as it is simpler and more capable
+// this legacy class-based configuration will probably change in the future
 - (void)mapRemoteField:(NSString *)field toLocalProperty:(NSString *)property forClass:(Class)class;
-//- (void)addRequestTransformer:(PrestoRequestTransformer)transformer forClass:(Class)class;
-//- (void)addResponseTransformer:(PrestoResponseTransformer)transformer forClass:(Class)class;
 
 // TODO: we need to support both white- and black-listing
 - (void)addSerializationKey:(NSString *)key forClass:(Class)class;
@@ -98,8 +104,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 - (NSString *)propertyNameForField:(NSString *)fieldName forClass:(Class)class;
 - (NSString *)fieldNameForProperty:(NSString *)propertyName forClass:(Class)class;
-- (void)transformRequest:(NSMutableURLRequest *)request;
-- (id)transformResponse:(id)jsonObject;
+//- (void)transformRequest:(NSMutableURLRequest *)request;
+//- (id)transformResponse:(id)jsonObject;
 - (BOOL)shouldPropertyBeSerialized:(NSString *)propertyName forClass:(Class)class;
 
 @end
@@ -117,21 +123,21 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 @interface PrestoSource : NSObject
 
-@property (weak, nonatomic) PrestoMetadata* target;				// the parent meta object (rename parent?)
+@property (weak, nonatomic) PrestoMetadata* target;			// the parent meta object (rename parent?)
 @property (strong, nonatomic) NSURL* url;
 @property (nonatomic) BOOL isLoading;
 @property (nonatomic) BOOL isLoaded;
 @property (readonly, nonatomic) BOOL isCompleted;
-@property (readonly, nonatomic) NSDate* loadedTime;				// there is a valid definition available
-@property (readonly, nonatomic) NSDate* loadingTime;			// we are waiting on a response from the server
-@property (strong, nonatomic) NSMutableURLRequest* request;		// the request representing the latest reload
-@property (strong, nonatomic) NSURLConnection* connection;
+@property (readonly, nonatomic) NSDate* loadedTime;			// there is a valid definition available
+@property (readonly, nonatomic) NSDate* loadingTime;		// we are waiting on a response from the server
+@property (strong, nonatomic) NSMutableURLRequest* request;	// the request representing the latest reload
+//@property (strong, nonatomic) NSURLConnection* connection;
 @property (strong, nonatomic) NSString* method;				// the last HTTP method used to load this object
 @property (strong, nonatomic) NSObject *payload;			// outgoing payload reference
 @property (strong, nonatomic) NSData *payloadData;			// outgoing payload data
 @property (strong, nonatomic) NSData *lastPayload;			// last incoming payload
-@property (nonatomic) NSInteger statusCode;						// the last HTTP status code
-@property (strong, nonatomic) NSError* error;					// we received an error from the last request
+@property (nonatomic) NSInteger statusCode;					// the last HTTP status code
+@property (strong, nonatomic) NSError* error;				// we received an error from the last request
 @property (nonatomic) NSTimeInterval refreshInterval;
 @property (strong, nonatomic) NSMutableArray* serializationKeys; // this is a temp hack to get around knowing what properties to serialize; this will be improved!
 @property (nonatomic) BOOL active; // allows a source to be turned on/off
@@ -141,19 +147,13 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 + (instancetype)sourceWithURL:(NSURL *)url method:(NSString *)method payload:(id)payload;
 
-//- (PrestoSource *)withPayloadData:(NSData *)payloadData;
-//- (PrestoSource *)withPayloadString:(NSString *)payloadString;
-//- (PrestoSource *)withRequestTransformer:(PrestoRequestTransformer)transformer;
-//- (PrestoSource *)withResponseTransformer:(PrestoResponseTransformer)transformer;
-
 @end
 
 @interface PrestoMetadata : NSObject
 
-@property (readonly, nonatomic) id target;			// the object that this metadata applies to
-//@property (strong, nonatomic) id strongTarget;		// a strong version of the target for those cases where a metadata instantiates its own target (so far we haven't actually needed this)
+@property (readonly, nonatomic) id target;			// the object that this metadata applies to (rename host?)
 @property (strong, nonatomic) Class targetClass;
-@property (strong, nonatomic) Class arrayClass;				// the class of elements (if target is a mutable array)
+@property (strong, nonatomic) Class arrayClass;		// the class of elements if target is a mutable array
 @property (strong, nonatomic) Presto *manager;		// the manager this object should use
 // TODO: i think we should deprecate multiple sources for simplicity and reverse updating etc.
 //@property (readonly, nonatomic) NSMutableSet *sources;			// keyed on propertyName or NSNull
@@ -165,8 +165,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @property (readonly, nonatomic) NSError* error;					// we received an error from the last request
 @property (readonly, nonatomic) NSInteger statusCode;
 //@property (strong, nonatomic) NSDate* lastUpdate;
-@property (readonly, nonatomic) NSMutableArray* callbacks;
-@property (readonly, nonatomic) NSMutableArray* dependencies;
+@property (strong, nonatomic) NSMutableArray* completions;
+@property (strong, nonatomic) NSMutableArray* dependencies;
 @property (nonatomic) NSTimeInterval refreshInterval;
 
 - (void)load; // replace with getSelf?
@@ -187,18 +187,21 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (PrestoMetadata *)putSelf;
 - (PrestoMetadata *)postSelf;
 - (PrestoMetadata *)deleteSelf;
-//- (void)putAndLoadSelf;
+//- (void)putAndLoad; // assumes the response of the PUT is the current state of the object
 //- (void)postAndLoadSelf; // you really shouldn't need to use this one if your API is properly implemented; POST should always create a new object, so it doesn't make sense to reload an existing object with its result
 
+- (PrestoMetadata *)loadAs:(NSObject *)object; // experimental
+
 - (void)loadFromSource:(PrestoSource *)source force:(BOOL)force;
-- (void)loadWithJSONString:(NSString *)json;
-- (void)loadWithJSONObject:(id)jsonObject;
-- (void)loadWithDictionary:(NSDictionary *)dictionary;
-- (void)loadWithArray:(NSArray *)array;
+- (BOOL)loadWithJSONString:(NSString *)json;
+- (BOOL)loadWithJSONObject:(id)jsonObject;
+- (BOOL)loadWithDictionary:(NSDictionary *)dictionary;
+- (BOOL)loadWithArray:(NSArray *)array;
 
 - (id)objectOfClass:(Class)class;
 - (id)arrayOfClass:(Class)class; // this is id to avoid type warnings
 
+- (NSString *)toJSONString;
 - (NSString *)toJSONString:(BOOL)pretty;
 - (id)toJSONObject;
 
