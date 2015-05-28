@@ -28,6 +28,8 @@
 //  An Objective-C REST Framework
 //  Designed and coded by Logan Murray
 
+//  I apologize for the current state of this file. There is a lot of commented out crap left over from previous design iterations. It will definitely be cleaned up.
+
 #import <objc/runtime.h>
 #import <UIKit/UIKit.h>
 #import "Presto.h"
@@ -36,7 +38,7 @@
 static const BOOL LOG_PAYLOADS = YES;
 static const BOOL LOG_WARNINGS = YES;
 static const BOOL LOG_ERRORS = YES;
-static const BOOL LOG_VERBOSE = NO;
+static const BOOL LOG_VERBOSE = YES;
 static const BOOL LOG_ZOMBIES = YES;
 
 static Presto *_defaultInstance;
@@ -535,11 +537,8 @@ static id ValueForUndefinedKey;
 - (instancetype)init {
 	self = [super init];
 	if ( self ) {
-		// keep this constructor as light as possible as metadata instances may be created often
+		// NOTE: keep this constructor as lightweight as possible as metadata instances may be created often
 		self.manager = [Presto defaultInstance];
-		
-//		_completions = [NSMutableArray new];
-//		_dependencies = [NSMutableArray new];
 	}
 	return self;
 }
@@ -556,11 +555,13 @@ static id ValueForUndefinedKey;
 	__strong id strongTarget = self.weakTarget;
 	
 	if ( !strongTarget ) {
-//		NSLog(@"Target not found! Creating a new one!! (%@, %@) Muahahaha!", self.targetClass ?: [NSMutableDictionary class], self.arrayClass);
 		if ( self.targetClass )
 			strongTarget = [[self.targetClass alloc] init];
 		else
 			strongTarget = [[NSMutableDictionary alloc] init];
+		
+		if ( LOG_VERBOSE )
+			PRLog(@"Target not found; creating a new %@: %x", self.targetClass, (uint)strongTarget);
 		
 		objc_setAssociatedObject( strongTarget, @selector(presto), self, OBJC_ASSOCIATION_RETAIN_NONATOMIC ); // install ourself onto the target
 		self.weakTarget = strongTarget;
@@ -982,6 +983,8 @@ static id ValueForUndefinedKey;
 }
 
 // TODO: do we really need a force parameter?
+// also can we get rid of the source parameter now that objects only have one source?
+// maybe just rename loadSource
 - (void)loadFromSource:(PrestoSource *)source force:(BOOL)force {
 	self.source = source;
 	
@@ -1440,6 +1443,10 @@ static id ValueForUndefinedKey;
 }
 
 - (NSDictionary *)toDictionary {
+	return [self toDictionaryComplete:NO];
+}
+
+- (NSDictionary *)toDictionaryComplete:(BOOL)complete {
 	if ( !self.weakTarget )
 		return nil;
 	if ( [self.target isKindOfClass:[NSDictionary class]] )
@@ -1449,11 +1456,18 @@ static id ValueForUndefinedKey;
 	objc_property_t* properties = class_copyPropertyList( [self.target class], &count );
 	
 	NSMutableDictionary* dictionary = [NSMutableDictionary dictionaryWithCapacity:count];
+	NSMutableArray *serializationKeys;
+	if ( [self.target respondsToSelector:@selector(serializingKeys)] )
+		serializationKeys = [[self.target serializingKeys] mutableCopy];
 	
 	for ( int i = 0; i < count ; i++ ) {
 		NSString* propertyName = [NSString stringWithCString:property_getName( properties[i] ) encoding:NSUTF8StringEncoding];
 		if ( [propertyName isEqualToString:@"presto"] )
 			continue;
+		else if ( serializationKeys && ![serializationKeys containsObject:propertyName] ) {
+			NSLog(@"skipping property “%@” as it's not in serializableKeys.", propertyName);
+			continue;
+		}
 		
 		Class protocolClass;
 		NSString* typeString = [NSString stringWithUTF8String:property_getAttributes( properties[i] )];
@@ -1466,7 +1480,7 @@ static id ValueForUndefinedKey;
 //			if ( [protocolName containsString:@","] )
 //				NSLog(@"Protocol: %@", protocolName);
 			NSArray* protocolNames = [protocolName componentsSeparatedByString:@"><"];
-			if ( [protocolNames containsObject:@"DoNotSerialize"] )
+			if ( !complete && [protocolNames containsObject:@"DoNotSerialize"] )
 				continue;
 			NSString* protocolTypeName = protocolName;//[self typeNameForProtocolName:protocolName]; // TODO: reimplement
 			protocolClass = NSClassFromString( protocolTypeName );
@@ -1479,7 +1493,7 @@ static id ValueForUndefinedKey;
 		
 //		NSLog(@"propertyName: %@ class: %@", propertyName, [self.target class]);//temp
 //		Class testClass = NSClassFromString(NSStringFromClass([self.target class]));
-		if ( ![self.manager shouldPropertyBeSerialized:propertyName forClass:self.targetClass] )
+		if ( !complete && ![self.manager shouldPropertyBeSerialized:propertyName forClass:self.targetClass] )
 			continue;
 //		BOOL skip = NO;
 		// we should be able to get rid of this when we have proper serialization key handling
@@ -1527,8 +1541,13 @@ static id ValueForUndefinedKey;
 		} else {
 			[dictionary setObject:[[(NSObject *)value presto] toDictionary] forKey:fieldName];
 		}
+		
+		[serializationKeys removeObject:propertyName]; // ok??
 	}
 	free( properties );
+	
+	for ( NSString* missingProperty in serializationKeys )
+		[dictionary setObject:[NSNull null] forKey:missingProperty];
 	
 	return dictionary;
 }
@@ -1579,7 +1598,10 @@ static id ValueForUndefinedKey;
 
 // TODO: rename "target" here to something else... lifeline... something
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target {
-	// TODO: we need to handle set dependency as well
+	if ( [self.targetClass isSubclassOfClass:[NSArray class]] && ![self.targetClass isSubclassOfClass:[NSMutableArray class]] && !self.source.url && !self.arrayClass ) {
+		[self addSetDependency:dependency withTarget:target];
+		return self;
+	}
 
 //	PrestoSource* source = [self sourceForProperty:property];
 	PrestoCallbackRecord* rec = [PrestoCallbackRecord new];
@@ -1695,6 +1717,10 @@ static id ValueForUndefinedKey;
 	}
 }
 
+- (void)addSetDependency:(PrestoCallback)dependency withTarget:(id)target {
+	@throw @"implement";
+}
+
 // abstract this to addCompletionForSource or something internally so we can reuse it
 // or we can just pass nil for property
 //- (void)addCompletion:(prestoCallback)success failure:(prestoCallback)failure forProperty:(NSString *)property withTarget:(id)target {
@@ -1703,6 +1729,25 @@ static id ValueForUndefinedKey;
 //- (void)onChange:(prestoCallback)dependency forProperty:(NSString *)property withTarget:(id)target {
 //
 //}
+
+#pragma mark -
+
+// this method manually calls dependency blocks, but not completions
+// TODO: this logic is duplicated; should be moved into callDependencyBlocks:(BOOL)changed
+- (void)signalChange {
+	__weak __block typeof(self) weakSelf = self;
+	
+	for ( PrestoCallbackRecord* rec in self.dependencies ) {
+		__strong id target = rec.strongTarget ?: rec.weakTarget;
+		if ( target || !rec.hasTarget ) {
+			dispatch_async(dispatch_get_main_queue(), ^{
+				__strong typeof(weakSelf) strongSelf = weakSelf;
+				rec.success( strongSelf.target );
+			});
+		}
+		// FIXME: we have to remove the callback records for dead targets
+	}
+}
 
 #pragma mark -
 
@@ -1731,10 +1776,10 @@ static id ValueForUndefinedKey;
 				// the following dispatch prevents reentrancy which can cause problems
 				
 				// FIXME: make sure this dispatch is enabled for release!
-				dispatch_async(dispatch_get_main_queue(), ^{
+//				dispatch_async(dispatch_get_main_queue(), ^{
 					__strong typeof(weakSelf) strongSelf = weakSelf;
 					rec.success( strongSelf.target );
-				});
+//				});
 			}
 		}
 //		[self.callbacks removeObjectsInArray:callbacks];
@@ -1806,8 +1851,8 @@ static id ValueForUndefinedKey;
 - (NSString *)description {
 	// other cool symbols: 🔄⚠⛔◽🔳🔲✅☐☒☑
 	NSString *typeName = [NSString stringWithFormat:@"%@%@", self.targetClass, self.arrayClass ? [NSString stringWithFormat:@"<%@>", self.arrayClass] : @""];
-	NSString *statusIcon = self.error ? @"⛔" : ( self.isLoaded ? @"✅" : @"◽" );
-	return [NSString stringWithFormat:@"%@%@ %@ 0x%x %@ %@", self.isLoading ? @"⌛" : @"", statusIcon, typeName, (uint)self, self.source.method, self.source.url.absoluteString];
+	NSString *statusIcon = self.error ? @"⛔" : ( self.isLoaded ? @"✅" : ( self.weakTarget ? @"🔲" : @"◽" ) );
+	return [NSString stringWithFormat:@"%@%@ %@ 0x%x %@ %@", self.isLoading ? @"⌛" : @"", statusIcon, typeName, (uint)self.weakTarget, self.source.method, self.source.url.absoluteString];
 }
 
 @end

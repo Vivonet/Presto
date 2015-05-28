@@ -57,6 +57,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 - (NSURL *)identifyingURL;
 //- (NSString *)identifyingTemplate; // return something like "http://.../%@"
+- (NSArray *)serializingKeys; // serializableProperties
 
 @end
 
@@ -176,6 +177,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (void)loadWithCompletion:(PrestoCallback)completion;
 - (void)loadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure; // todo
 //- (void)loadWithCompletion:(PrestoCallback)completion force:(BOOL)force;
+- (PrestoMetadata *)loadAs:(NSObject *)object; // experimental--the idea here is you can call loadAs on an existing instance to load it in place with the result of some other remote source such as a PUT or POST, rather than replacing it with a new instance (rename loadFrom:?)
 
 // note that calling these does not immediately load the object (that happens when you add a completion or dependency)
 - (PrestoMetadata *)getFromURL:(NSURL *)url;
@@ -190,8 +192,6 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 //- (void)putAndLoad; // assumes the response of the PUT is the current state of the object
 //- (void)postAndLoadSelf; // you really shouldn't need to use this one if your API is properly implemented; POST should always create a new object, so it doesn't make sense to reload an existing object with its result
 
-- (PrestoMetadata *)loadAs:(NSObject *)object; // experimental
-
 - (void)loadFromSource:(PrestoSource *)source force:(BOOL)force;
 - (BOOL)loadWithJSONString:(NSString *)json;
 - (BOOL)loadWithJSONObject:(id)jsonObject;
@@ -204,6 +204,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (NSString *)toJSONString;
 - (NSString *)toJSONString:(BOOL)pretty;
 - (id)toJSONObject;
+- (NSDictionary *)toDictionary;
+- (NSDictionary *)toDictionaryComplete:(BOOL)complete; // had to add this temporarily until serialization is better
 
 - (PrestoMetadata *)withUsername:(NSString *)username password:(NSString *)password;
 
@@ -217,8 +219,11 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (PrestoMetadata *)onComplete:(PrestoCallback)completion;
 - (PrestoMetadata *)onComplete:(PrestoCallback)success failure:(PrestoCallback)failure;
 
+// TODO: consider changing "withTarget" to "withViewController" since that's really its intended purpose
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency;
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target;
+
+- (void)signalChange; // experimental--calls dependency blocks manually
 
 - (void)uninstall; // uninstalls the current metadata object from its host
 
