@@ -5,7 +5,7 @@ A non-intrusive Objective-C REST framework that just works like magic!
 https://youtu.be/iwIdXJPXpMU
 
 ## What is Presto?
-Presto is an iOS REST bridge that eliminates much of the tedium of communicating with a remote REST source in a way that is already immediately intuitive to developers, without actually abstracting or obfuscating the REST interface itself. Presto simply reduces the time and steps needed to do what you already want to do, removing the mundane and time-wasting work of handling things like communication, serialization and change handling, and ties your remotely hosted JSON data directly to native objects via the Objective-C runtime. Presto is designed to non-intrusively tie itself into your existing data model and can automatically load your existing class objects with data from a remote source with minimal setup and a very easy learning curve.
+Presto is an iOS REST bridge that eliminates much of the tedium of communicating with a remote REST source in a way that is immediately intuitive to developers, without actually abstracting or obfuscating the REST interface itself like some other frameworks attempt. Presto simply reduces the time and steps needed to do what you already want to do, removing the mundane and time-wasting work of handling things like communication, serialization and change handling, and ties your remotely hosted JSON data directly to native objects via the Objective-C runtime. Presto is designed to non-intrusively tie itself into your existing data model and can automatically load your existing class objects with data from a remote source with minimal setup and a very easy learning curve.
 
 For example, loading an object with a remote JSON definition is as simple as this:
 
@@ -36,6 +36,8 @@ You can now attach completions and/or dependencies to self.profile and access th
 		…
 	}];
 
+(Important note: When using dependencies that reference `self`, because of the fact that the Presto metadata keeps a strong reference to the block, you should always use a weakSelf pattern to avoid creating a retain cycle. It is only omitted above for brevity.)
+
 This block will be called whenever self.profile is reloaded from its remote source (but only if there are actually changes), allowing your user interface to automatically keep itself up to date with remote changes.
 
 Note that MyProfile inherits from NSObject, not some Presto class. With Presto you can load objects of *any* class (even ones you don’t control), not just those that derive from a specific base class.
@@ -49,7 +51,7 @@ Presto is a work in progress and is not yet in a state where it can be considere
 Presto has a few core strengths and design goals:
 
 0. It is designed to be as unobtrusive as possible. This means a couple things: First, it is very easy to integrate into your existing projects. There’s no need to change your model class definitions aside from possibly adding a few empty protocols and optional overrides. Secondly, it means you can gradually migrate code to Presto from your existing infrastructure a piece at a time. You can use Presto when and where you like, and leave legacy code intact. Presto is designed to make your life easier, not get in the way.
-0. It has a powerful chained syntax. Aside from the necessary ugliness of a few extra square brackets in your code, Presto has a very powerful and expressive syntax that lets you stack on exactly the pieces you want, without the need for bloated and complicated method signatures. With Presto, `nil` parameters are a rarity.
+0. It has a powerful yet simple **fluent interface**. Aside from the necessary ugliness of a few extra square brackets in your code, Presto has a very powerful and expressive syntax that lets you stack on exactly and only the pieces you want, without the need for bloated and complicated method signature overloads. With Presto, `nil` parameters are a rarity.
 0. It is designed to be as automatic as possbile, loading only what is needed when it is needed. With Presto you just code and go.
 0. Presto should make your coding more intuitive and less bug-prone. With proper use of completions and depenencies, your app will also behave consistently and react automatically to remote changes.
 0. In-place loading means you can refresh your objects from their server definitions without blowing away other local data. Working on a single instance of an object means more predictable behavior and instant compatibility with a wide range of existing designs.
@@ -94,8 +96,6 @@ The presto property acts as your point of interface into the Presto engine from 
 
 The NSObject+Presto category extends many of the PrestoMetadata methods onto NSObject for convenience. You don’t need to use the category if you don't want to, or you can customize it if it conflicts with your own NSObject overrides.
 
-
-
 ## Lazy Loading
 Pretty much everything in Presto is lazy-loaded on the fly only when it is observed. Simply defining the source of an object does not immediately result in a call to the server. This happens when you attach a completion or dependency to an object, which are the two ways in which Presto objects should be observed.
 
@@ -110,6 +110,22 @@ A completion allows you to decouple the code that handles a remote object from t
 
 ## Dependencies
 If you want a block of code to be called every time an object changes, use a dependency instead, by instead passing the same block to **onChange:**. You can also pass an optional weak target to **onChange:** that will existentially tie the given block to the existence of the target. If the target disappears, the block will no longer be called. Typically the current view or view controller is passed as this parameter, because if the view disappears, there's probably nothing to update anyway.
+
+## Set Completions
+So what do you do if your block of code depends on multiple different remote sources? Well, you could wrap completions inside completions, but that will quickly get ugly. Instead, Presto allows you to add a completion to an array of sourced objects such that the completion will only be called when *all* of the objects in it have completed:
+
+	@[[firstObject, secondObject, thirdObject] onComplete:^(NSObject *result) {
+		// all three objects will be complete at this point (but not necessarily successful)
+	}];
+
+Note that because this is a completion and not a dependency, and completions must be guaranteed to fire, this doesn't require the success of the individual objects contained in the array. Therefore you should always check the validity of your objects in your completion block as appropriate.
+
+## Set Dependencies
+Set dependencies follow similar logic as set completions, but being a dependency, the supplied block is called whenever *any* of the objects in the array change, and only when they change successfully.
+
+Because dependencies are kept alive indefinitely, it is recommended that you pass a target object with your completions if you are not dealing with global instances. This weakly-referenced target acts as a canary to your callback. If the canary disappears, the block is 
+
+Remember, you can attach as many completions and dependencies to objects as you wish, so if you need to have the features of completions in one case and dependencies in another, feel free.
 
 ## What Doesn’t Presto Do?
 As I've mentioned, Presto is still in its infancy. There are still some features and abilities that are planned or being considered that are not yet part of the framework. One such obvious omission is that of converters. There is no layer of conversion happening between a payload and your local properties.
