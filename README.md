@@ -36,7 +36,7 @@ You can now attach completions and/or dependencies to self.profile and access th
 		…
 	}];
 
-(Important note: When using dependencies that reference `self`, because of the fact that the Presto metadata keeps a strong reference to the block, you should always use a weakSelf pattern to avoid creating a retain cycle. It is only omitted above for brevity.)
+_(Important note: When using dependencies that reference `self`, because of the fact that the Presto metadata keeps a strong reference to the block, you should always use a weakSelf pattern to avoid creating a retain cycle. It is only omitted above for brevity. You don’t have to worry about this with completions though, because completions are only called once and dereferenced.)_
 
 This block will be called whenever self.profile is reloaded from its remote source (but only if there are actually changes), allowing your user interface to automatically keep itself up to date with remote changes.
 
