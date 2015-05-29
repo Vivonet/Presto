@@ -30,13 +30,14 @@ That's it! Provided your remote document looks something like this:
 
 You can now attach completions and/or dependencies to self.profile and access the loaded properties from within the attached block. Presto uses blocks to decouple the asynchronous loading of a property from its use. You should always access remotely-defined properties from within a completion or dependency block, but they're simple to use and you can add as many of these as you want! Here's an example of a dependency:
 
+	__weak typeof(self) weakSelf = self;
 	[self.profile onChange:^(NSObject *result) {
-		self.nameLabel.text = self.profile.name;
-		self.emailLabel.text = self.profile.email;
+		weakSelf.nameLabel.text = self.profile.name;
+		weakSelf.emailLabel.text = self.profile.email;
 		…
 	}];
 
-_(Important note: When using dependencies that reference `self`, because of the fact that the Presto metadata keeps a strong reference to the block, you should always use a weakSelf pattern to avoid creating a retain cycle. It is only omitted above for brevity. You don’t have to worry about this with completions though, because completions are only called once and dereferenced.)_
+_(Important note: When using dependencies that reference `self`, because of the fact that the Presto metadata keeps a strong reference to the block, you should always use a weakSelf pattern to avoid creating a retain cycle. You don’t have to worry about this with completions because completions are always called once and dereferenced.)_
 
 This block will be called whenever self.profile is reloaded from its remote source (but only if there are actually changes), allowing your user interface to automatically keep itself up to date with remote changes.
 
@@ -44,7 +45,7 @@ Note that MyProfile inherits from NSObject, not some Presto class. With Presto y
 
 Presto’s aim is to make loading and manipulating remote data as simple as possible and does so by interacting with the Objective-C runtime to dynamically match server-side JSON attributes to client-side Objective-C properties.
 
-Presto is also very fault-tolerant. If the library encounters a property or attribute it does not recognize, or a situation it doesn’t know how to handle, it will print a warning to the console, but otherwise continue without cause for alarm. This means your client and server side model don’t need to match exactly, nor do either of them need to be exhaustively defined. If your server returns information your client doesn’t need, you can safely just ignore it when using Presto.
+Presto is also very fault-tolerant. If the library encounters a property or attribute it does not recognize, or a situation it doesn’t know how to handle, it will print a warning to the console, but otherwise continue without cause for alarm. This means your client and server side model don’t need to match exactly, nor do either of them need to be exhaustively defined. If your server returns information your client doesn’t need, you can safely just ignore it.
 
 Presto is a work in progress and is not yet in a state where it can be considered complete enough to handle all scenarios, but it is already quite capable enough to handle a large majority of requests. My hope is that as it develops, it will become more and more general purpose. In the meantime, if you see a feature or ability lacking in Presto that you would like to see implemented, please shoot me a line or open an issue for it. Or of course you can implement it yourself. I’ve tried to keep the code as simple and straightforward as possible to facilitate modifications.
 
@@ -105,6 +106,18 @@ Pretty much everything in Presto is lazy-loaded on the fly only when it is obser
 		// self.myProfile.name is now filled in because we are inside a completion block
 	}];
 
+You can manually (re)load an object at any time (for example to pre-fetch information that will be needed on the next screen) by calling `load`. `load` assumes that the object's source has already been provided by another means such as by calling `getFromURL:` on that object previously, or by obtaining the object from a call to `putToURL:` or `postToURL:`. For example:
+
+	AddUserResponse* response = [[newUser putToURL:url] objectOfClass:[User class]];
+	[response onChange:^{
+		// update the UI
+		// note that this will be called automatically once
+	}];
+	// …
+	[response load];
+
+_Warning: Calling `load` on an object with a remote source will cause whatever source it is defined as to be resent. If this is a PUT or POST, it will perform that PUT or POST again, reserializing the target payload object at the time of the request._
+
 ## Completions
 A completion allows you to decouple the code that handles a remote object from the code that loads it. You attach a completion to an object via the **onComplete:** method. A completion will only be called once after it is attached, but is guaranteed to be called eventually, whatever the result of the server call may be, including failure. If an object is already loaded, the completion will be executed immediately and the object will not be reloaded. If you want to force a refresh of the object, use **loadWithCompletion:** or simply call **load** before attaching the completion (which is exactly what loadWithCompletion: does).
 
@@ -123,7 +136,7 @@ Note that because this is a completion and not a dependency, and completions mus
 ## Set Dependencies
 Set dependencies follow similar logic as set completions, but being a dependency, the supplied block is called whenever *any* of the objects in the array change, and only when they change successfully.
 
-Because dependencies are kept alive indefinitely, it is recommended that you pass a target object with your completions if you are not dealing with global instances. This weakly-referenced target acts as a canary to your callback. If the canary disappears, the block is 
+Because dependencies are kept alive indefinitely, it is recommended that you pass a target object with your completions if you are not dealing with global instances. This weakly-referenced target acts as a canary to your callback. If the canary disappears, the block will no longer be called.
 
 Remember, you can attach as many completions and dependencies to objects as you wish, so if you need to have the features of completions in one case and dependencies in another, feel free.
 
