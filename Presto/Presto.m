@@ -1452,16 +1452,27 @@ static id ValueForUndefinedKey;
 	if ( [self.target isKindOfClass:[NSDictionary class]] )
 		return self.target; // we're already a dictionary! this avoids attempting to serialize NSDictionary's properties
 	
-	uint count;
-	objc_property_t* properties = class_copyPropertyList( [self.target class], &count );
+	NSMutableArray* properties = [NSMutableArray new];
+	Class class = self.targetClass;
 	
-	NSMutableDictionary* dictionary = [NSMutableDictionary dictionaryWithCapacity:count];
+	while ( class && class != [NSObject class] ) {
+		uint count;
+		objc_property_t* c_properties = class_copyPropertyList( class, &count );
+		for ( int i = 0; i < count; i++ )
+			[properties addObject:[NSValue valueWithBytes:&c_properties[i] objCType:@encode(objc_property_t)]]; // TODO: do we need to free this ever? documentation isn't clear
+		free( c_properties );
+		class = [class superclass];
+	}
+	
+	NSMutableDictionary* dictionary = [NSMutableDictionary dictionaryWithCapacity:properties.count];
 	NSMutableArray *serializationKeys;
 	if ( [self.target respondsToSelector:@selector(serializingKeys)] )
 		serializationKeys = [[self.target serializingKeys] mutableCopy];
 	
-	for ( int i = 0; i < count ; i++ ) {
-		NSString* propertyName = [NSString stringWithCString:property_getName( properties[i] ) encoding:NSUTF8StringEncoding];
+	for ( NSValue* value in properties ) {
+		objc_property_t c_property;
+		[value getValue:&c_property];
+		NSString* propertyName = [NSString stringWithCString:property_getName( c_property ) encoding:NSUTF8StringEncoding];
 		if ( [propertyName isEqualToString:@"presto"] )
 			continue;
 		else if ( serializationKeys && ![serializationKeys containsObject:propertyName] ) {
@@ -1470,7 +1481,7 @@ static id ValueForUndefinedKey;
 		}
 		
 		Class protocolClass;
-		NSString* typeString = [NSString stringWithUTF8String:property_getAttributes( properties[i] )];
+		NSString* typeString = [NSString stringWithUTF8String:property_getAttributes( c_property )];
 		NSString* typeAttribute = [typeString componentsSeparatedByString:@","][0];
 		NSString* typeName = [typeAttribute substringWithRange:NSMakeRange(3, [typeAttribute length] - 4)];
 		NSString* propertyType = [typeAttribute substringFromIndex:1];
@@ -1544,7 +1555,7 @@ static id ValueForUndefinedKey;
 		
 		[serializationKeys removeObject:propertyName]; // ok??
 	}
-	free( properties );
+//	free( properties );
 	
 	for ( NSString* missingProperty in serializationKeys )
 		[dictionary setObject:[NSNull null] forKey:missingProperty];
