@@ -26,7 +26,7 @@
 //   PRESTO!
 //  
 //  An Objective-C REST Framework
-//  Designed and coded by Logan Murray
+//  Designed and implemented by Logan Murray
 
 #import <Foundation/Foundation.h>
 
@@ -150,6 +150,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 @end
 
+// TODO: since this by and large the main class in Presto perhaps we should rename this class to Presto and rename the Presto class to something like PrestoManager
+// of course we'd want to move the global class methods down here to keep the syntax the same.
 @interface PrestoMetadata : NSObject
 
 @property (readonly, nonatomic) id target;			// the object that this metadata applies to (rename host?)

@@ -26,14 +26,13 @@
 //   PRESTO!
 //  
 //  An Objective-C REST Framework
-//  Designed and coded by Logan Murray
+//  Designed and implemented by Logan Murray
 
 //  I apologize for the current state of this file. There is a lot of commented out crap left over from previous design iterations. It will definitely be cleaned up.
 
 #import <objc/runtime.h>
 #import <UIKit/UIKit.h>
 #import "Presto.h"
-#import "Reachability.h"
 
 static const BOOL LOG_PAYLOADS = YES;
 static const BOOL LOG_WARNINGS = YES;
@@ -419,57 +418,6 @@ static id ValueForUndefinedKey;
 
 #pragma mark -
 
-//- (PrestoSource *)withMethod:(NSString *)method {
-//	self.method = method;
-//	return self;
-//}
-//
-//- (PrestoSource *)withPayload:(id)payload {
-//	self.payload = payload;
-//	return self;
-//}
-//
-//- (PrestoSource *)withPayloadData:(NSData *)payloadData {
-//	self.payloadData = payloadData;
-//	return self;
-//}
-//
-//- (PrestoSource *)withPayloadString:(NSString *)payloadString {
-//	self.payloadData = [payloadString dataUsingEncoding:NSUTF8StringEncoding];
-//	return self;
-//}
-//
-//- (PrestoSource *)withRequestTransformer:(PrestoRequestTransformer)transformer {
-//	[self.requestTransformers addObject:transformer];
-//	return self;
-//}
-//
-//- (PrestoSource *)withResponseTransformer:(PrestoResponseTransformer)transformer {
-//	[self.responseTransformers addObject:transformer];
-//	return self;
-//}
-
-//#pragma mark -
-//
-//- (void)load {
-//	[self.target loadFromSource:self force:NO];
-//}
-//
-//- (void)load:(BOOL)force {
-//	[self.target loadFromSource:self force:force];
-//}
-//
-//- (void)loadWithCompletion:(PrestoCallback)completion {
-//	[self.target addCompletion:completion];
-//}
-
-#pragma mark -
-
-// should we allow completions on sources or just objects?
-//- (PrestoSource *)addCompletion:(PrestoCallback)completion {
-//	
-//}
-
 - (void)transformRequest {
 	// i'm really not sure if we should do global or local first here.
 	NSArray *transformers = [self.requestTransformers arrayByAddingObjectsFromArray:self.target.manager.requestTransformers];
@@ -526,9 +474,9 @@ static id ValueForUndefinedKey;
 + (id)instantiateClass:(Class)class withDictionary:(NSDictionary *)dict {
 	if ( class == nil )
 		return nil;
-	id result = [[class alloc] init];
+	NSObject *result = [[class alloc] init];
 //	NSAssert( [result isKindOfClass:[RemoteObject class]], @"The class ‘%@’ does not derive from RemoteObject.", class );
-	[result loadWithDictionary:dict];
+	[result.presto loadWithDictionary:dict];
 	return result;
 }
 
@@ -644,7 +592,7 @@ static id ValueForUndefinedKey;
 - (void)setSource:(PrestoSource *)source {
 	if ( [_source isEqual:source] ) {
 		if ( LOG_VERBOSE )
-			PRLog(@"Presto Notice: Source set to an equivalent value. Ignoring.");
+			PRLog(@"Presto: Source set to an equivalent value. Ignoring.");
 		return;
 	}
 	
@@ -1020,7 +968,8 @@ static id ValueForUndefinedKey;
 		
 		strongSelf.manager.activeRequests--; // FIXME: this can technically not be called if weakSelf disappears, leaving activeRequests in an incorrect state
 			
-		BOOL changed = !source.lastPayload || ![data isEqualToData:source.lastPayload]; // TODO: reenable this
+		BOOL changed = YES;//!source.lastPayload || ![data isEqualToData:source.lastPayload]; // TODO: reenable this
+		// TODO: we should consider dropping this changed flag entirely, because it's quite possible that the client state could have changed and we need to reset it to the server state even if the server state has not itself actually changed
 		
 		source.isLoading = NO; // works better up here in case any of the callbacks register further callbacks
 		source.error = connectionError;
@@ -1046,7 +995,7 @@ static id ValueForUndefinedKey;
 		
 		if ( !strongSelf || !strongTarget ) {
 			if ( LOG_ZOMBIES )
-				PRLog(@"Presto! NOTICE: Target of source %@ has disappeared. Response will be ignored.", source);
+				PRLog(@"Presto: Target of source %@ has disappeared. Response will be ignored.", source);
 			return; // object has disappeared
 		}
 		
@@ -1238,7 +1187,7 @@ static id ValueForUndefinedKey;
 				NSObject *existing = strongTarget[i];
 				if ( [existing isEqual:instance] ) {
 					if ( LOG_VERBOSE )
-						PRLog(@"Presto Notice: Found existing object in array (%@). Will load in place.", [existing description]);
+						PRLog(@"Presto: Found existing object in array (%@). Will load in place.", [existing description]);
 					found = YES;
 					changed = [existing.presto loadWithDictionary:elem] || changed; // make sure it's ok to not call loadwithjsonobject // also this shoudl return BOOL changed
 					[resultState addObject:existing];
@@ -1341,11 +1290,11 @@ static id ValueForUndefinedKey;
 						id childObject = [PrestoMetadata instantiateClass:protocolClass withDictionary:elem];
 						[valueDict setObject:childObject forKey:key];
 					}
-					[self.target setValue:valueDict forKey:propertyName];
+					[self setTargetValue:valueDict forKey:propertyName];
 				}
 			} else {
 				changed = YES; // TODO: recursively compare dictionaries? isEqualToDictionary: is not enough i don't think
-				[self.target setValue:value forKey:propertyName];
+				[self setTargetValue:value forKey:propertyName];
 			}
 		} else {
 			// assume it is an embedded object
@@ -1356,7 +1305,7 @@ static id ValueForUndefinedKey;
 				id childObject = [PrestoMetadata instantiateClass:propertyClass withDictionary:value];
 //				if ( ![existingValue isEqual:childObject] ) // this is not reliable enough
 //					changed = YES;
-				[self.target setValue:childObject forKey:propertyName];
+				[self setTargetValue:childObject forKey:propertyName];
 			}
 		}
 	} else if ( [value isKindOfClass:[NSArray class]] && protocolClass != nil ) {
@@ -1369,14 +1318,14 @@ static id ValueForUndefinedKey;
 			new = YES;
 			changed = YES;
 			childArray = [NSMutableArray arrayWithCapacity:[(NSArray*)value count]];
-//			[self.target setValue:childArray forKey:propertyName]; // ok to add before it's loaded? this may not be a good idea with key-value observers!
+//			[self setTargetValue:childArray forKey:propertyName]; // ok to add before it's loaded? this may not be a good idea with key-value observers!
 		}
 		
 		childArray.presto.arrayClass = protocolClass;
 		changed = [childArray.presto loadWithArray:value] || changed;
 		
 		if ( new )
-			[self.target setValue:childArray forKey:propertyName];
+			[self setTargetValue:childArray forKey:propertyName];
 	} else {
 		// TODO: error handling
 		if ( value == [NSNull null] )
@@ -1390,7 +1339,7 @@ static id ValueForUndefinedKey;
 			if ( ![existingValue isEqual:value] ) // FIXME: doesn't work for nil
 				changed = YES;
 			@try {
-				[self.target setValue:value forKey:propertyName];
+				[self setTargetValue:value forKey:propertyName];
 			}
 			@catch ( NSException* exception ) {
 				PRLog(@"Exception attempting to set value for key ‘%@’:\n%@", propertyName, exception);
@@ -1399,6 +1348,20 @@ static id ValueForUndefinedKey;
 	}
 	
 	return changed;
+}
+
+- (void)setTargetValue:(id)value forKey:(NSString *)key {
+	@try {
+		[self.target setValue:value forKey:key];
+	}
+	@catch (NSException *exception) {
+		NSLog(@"Couldn't set ‘%@’ to %@", key, value);
+		
+		// TODO: if we are unable to set a property, should we abort the entire object and set it to nil on the parent target?
+	}
+	@finally {
+		
+	}
 }
 
 #pragma mark -
@@ -1466,7 +1429,7 @@ static id ValueForUndefinedKey;
 	
 	NSMutableDictionary* dictionary = [NSMutableDictionary dictionaryWithCapacity:properties.count];
 	NSMutableArray *serializationKeys;
-	if ( [self.target respondsToSelector:@selector(serializingKeys)] )
+	if ( !complete && [self.target respondsToSelector:@selector(serializingKeys)] )
 		serializationKeys = [[self.target serializingKeys] mutableCopy];
 	
 	for ( NSValue* value in properties ) {
@@ -1476,12 +1439,18 @@ static id ValueForUndefinedKey;
 		if ( [propertyName isEqualToString:@"presto"] )
 			continue;
 		else if ( serializationKeys && ![serializationKeys containsObject:propertyName] ) {
-			NSLog(@"skipping property “%@” as it's not in serializableKeys.", propertyName);
+			if ( LOG_VERBOSE )
+				NSLog(@"Presto: Skipping property “%@” as it's not in serializableKeys.", propertyName);
 			continue;
 		}
 		
 		Class protocolClass;
 		NSString* typeString = [NSString stringWithUTF8String:property_getAttributes( c_property )];
+		if ( [[typeString substringFromIndex:[typeString rangeOfString:@","].location] containsString:@"W"] ) {
+			if ( LOG_VERBOSE )
+				NSLog(@"Presto: Skipping weak property “%@” (%@).", propertyName, typeString );
+			continue;
+		}
 		NSString* typeAttribute = [typeString componentsSeparatedByString:@","][0];
 		NSString* typeName = [typeAttribute substringWithRange:NSMakeRange(3, [typeAttribute length] - 4)];
 		NSString* propertyType = [typeAttribute substringFromIndex:1];
@@ -1546,11 +1515,11 @@ static id ValueForUndefinedKey;
 		} else if ( [value isKindOfClass:[NSArray class]] ) {
 			NSMutableArray *arrayValue = [NSMutableArray arrayWithCapacity:((NSArray *)value).count];
 			for ( NSObject *object in (NSArray *)value ) {
-				[arrayValue addObject:object.presto.toDictionary];
+				[arrayValue addObject:[object.presto toDictionaryComplete:complete]];
 			}
 			[dictionary setObject:arrayValue forKey:fieldName];
 		} else {
-			[dictionary setObject:[[(NSObject *)value presto] toDictionary] forKey:fieldName];
+			[dictionary setObject:[[(NSObject *)value presto] toDictionaryComplete:complete] forKey:fieldName];
 		}
 		
 		[serializationKeys removeObject:propertyName]; // ok??
@@ -1855,6 +1824,18 @@ static id ValueForUndefinedKey;
 		// FIXME: we have to remove the callback records for dead targets
 	}
 //	}
+}
+
+#pragma mark -
+
+// decouples the receiver from its current host. this does not invalidate the metadata. you can access its .target property to recreate a new host on the fly.
+- (void)uninstall {
+	__strong id strongTarget = self.weakTarget;
+	
+	if ( !strongTarget )
+		return; // no target; nothing to uninstall
+	
+	objc_setAssociatedObject( strongTarget, @selector(presto), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC );
 }
 
 #pragma mark -
