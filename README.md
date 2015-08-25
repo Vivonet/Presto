@@ -112,7 +112,7 @@ Pretty much everything in Presto is lazy-loaded on the fly only when it is obser
 
 You can manually (re)load an object at any time (for example to pre-fetch information that will be needed on the next screen) by calling `load`. `load` assumes that the object's source has already been provided by another means such as by calling `getFromURL:` on that object previously, or by obtaining the object from a call to `putToURL:` or `postToURL:`. For example:
 
-	AddUserResponse* response = [[newUser putToURL:url] objectOfClass:[User class]];
+	AddUserResponse* response = [[newUser putToURL:url] objectOfClass:[AddUserResponse class]];
 	[response onChange:^(NSObject* result) {
 		// update the UI
 		// note that this will be called automatically once
@@ -140,7 +140,7 @@ Here is an example of a typical weakSelf pattern:
 ## Set Completions
 So what do you do if your block of code depends on multiple different remote sources? Well, you could wrap completions inside completions, but that will quickly get ugly. Instead, Presto allows you to add a completion to an array of sourced objects such that the completion will only be called when *all* of the objects in it have completed:
 
-	@[[firstObject, secondObject, thirdObject] onComplete:^(NSObject *result) {
+	[@[firstObject, secondObject, thirdObject] onComplete:^(NSObject *result) {
 		// all three objects will be complete at this point (but not necessarily successful)
 	}];
 

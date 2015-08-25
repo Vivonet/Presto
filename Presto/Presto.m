@@ -921,16 +921,16 @@ static id ValueForUndefinedKey;
 }
 
 - (PrestoMetadata *)loadWithCompletion:(PrestoCallback)completion {
-	[self load];
-	// we should probably record the timestamp above before we load
-	[self onComplete:completion];
-	return self;
+	return [[self load] onComplete:completion];
+//	[self load];
+//	// we should probably record the timestamp above before we load
+//	[self onComplete:completion];
+//	return self;
 }
 
 - (PrestoMetadata *)loadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure {
-	[self load];
-	[self onComplete:success failure:failure];
-	return self;
+	return [[self load] onComplete:success failure:failure];
+//	return self;
 }
 
 // TODO: find somewhere better for this
