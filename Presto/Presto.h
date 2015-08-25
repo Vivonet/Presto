@@ -27,6 +27,8 @@
 //  
 //  An Objective-C REST Framework
 //  Designed and implemented by Logan Murray
+//  
+//  https://github.com/Vivonet/Presto
 
 #import <Foundation/Foundation.h>
 
@@ -36,13 +38,15 @@
 @class PrestoMetadata;
 
 typedef void (^PrestoCallback)( NSObject *result );
+// we should consider adding PrestoFailureCallback which also passes an NSError *error
 typedef void (^PrestoRequestTransformer)( NSMutableURLRequest *request );
 typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON object (NSArray* or NSDictionary*)
 
 // these are empty protocols that allow us to attribute properties with meta information
 // note that protocols can only be attached to object types, so you should declare your property as NSNumber if you need to attach a protocol to a numerical or boolean type.
 @protocol Identifying; // TODO: this will eventually be used to more efficiently equate objects when an array is loaded; for now only isEqual: is supported
-@protocol DoNotSerialize;
+@protocol SortKey; // TODO: use this to know what property to sort mutable arrays on (optional)
+@protocol DoNotSerialize; // maybe rename to Secure (or add a Secure that will never be serialized)
 // should we add a Serialize property as well to act as a whitelist?
 
 @protocol PrestoDelegate
@@ -65,7 +69,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 @property (weak, nonatomic) NSObject<PrestoDelegate> *delegate;
 @property (nonatomic) NSInteger activeRequests;
-@property (nonatomic) BOOL showActivityIndicator; // default is YES
+@property (nonatomic) BOOL trackParentObjects; // default YES
+@property (nonatomic) BOOL showActivityIndicator; // default YES
 
 + (Presto *)defaultInstance;
 
@@ -85,6 +90,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 + (void)addSerializationKeys:(NSArray *)keys forClass:(Class)class;
 
 + (PrestoMetadata *)getFromURL:(NSURL *)url;
++ (PrestoMetadata *)putToURL:(NSURL *)url;			// will PUT with no body
++ (PrestoMetadata *)postToURL:(NSURL *)url;			// will POST with no body
 + (PrestoMetadata *)deleteFromURL:(NSURL *)url;
 
 // --
@@ -113,12 +120,28 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 @interface PrestoCallbackRecord : NSObject
 
-@property (strong, nonatomic) id strongTarget;		// for completions
-@property (weak, nonatomic) id weakTarget;			// for dependencies
+//@property (weak, nonatomic) id target;
+//@property (strong, nonatomic) id strongTarget;		// we can also use this to tell if the object is a completion because a callback is a completion iff it has a strong target
 @property (strong, nonatomic) NSDate* timestamp; // not used yet, but might be a good idea
 @property (strong, nonatomic) PrestoCallback success;
 @property (strong, nonatomic) PrestoCallback failure; // note: if a failure block is not provided, the success block is called regardless of outcome (success/failure)
-@property (nonatomic) BOOL hasTarget;
+
+//- (id)target;
+//- (void)setTarget:(id)target;
+//- (BOOL)isCompletion;
+
+@end
+
+@interface PrestoCompletionRecord : PrestoCallbackRecord
+
+@property (strong, nonatomic) id target;
+
+@end
+
+@interface PrestoDependencyRecord : PrestoCallbackRecord
+
+@property (weak, nonatomic) id owner;
+@property (nonatomic) BOOL hasOwner;
 
 @end
 
@@ -137,10 +160,11 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @property (strong, nonatomic) NSObject *payload;			// outgoing payload reference
 @property (strong, nonatomic) NSData *payloadData;			// outgoing payload data
 @property (strong, nonatomic) NSData *lastPayload;			// last incoming payload
+@property (strong, nonatomic) id serializationTemplate;		// template for serializing the payload
 @property (nonatomic) NSInteger statusCode;					// the last HTTP status code
 @property (strong, nonatomic) NSError* error;				// we received an error from the last request
 @property (nonatomic) NSTimeInterval refreshInterval;
-@property (strong, nonatomic) NSMutableArray* serializationKeys; // this is a temp hack to get around knowing what properties to serialize; this will be improved!
+//@property (strong, nonatomic) NSMutableArray* serializationKeys; // this is a temp hack to get around knowing what properties to serialize; this will be improved!
 @property (nonatomic) BOOL active; // allows a source to be turned on/off
 
 @property (strong, nonatomic) NSMutableArray *requestTransformers;
@@ -155,8 +179,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @interface PrestoMetadata : NSObject
 
 @property (readonly, nonatomic) id target;			// the object that this metadata applies to (rename host?)
+@property (weak, nonatomic) NSObject *parent; // a weak reference to the object that contains this object
 @property (strong, nonatomic) Class targetClass;
-@property (strong, nonatomic) Class arrayClass;		// the class of elements if target is a mutable array
 @property (strong, nonatomic) Presto *manager;		// the manager this object should use
 // TODO: i think we should deprecate multiple sources for simplicity and reverse updating etc.
 //@property (readonly, nonatomic) NSMutableSet *sources;			// keyed on propertyName or NSNull
@@ -168,18 +192,31 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @property (readonly, nonatomic) NSError* error;					// we received an error from the last request
 @property (readonly, nonatomic) NSInteger statusCode;
 //@property (strong, nonatomic) NSDate* lastUpdate;
-@property (strong, nonatomic) NSMutableArray* completions;
-@property (strong, nonatomic) NSMutableArray* dependencies;
+//@property (strong, nonatomic) NSMutableArray* completions;
+//@property (strong, nonatomic) NSMutableArray* dependencies;
+@property (strong, nonatomic) NSMutableArray* callbacks;
 @property (nonatomic) NSTimeInterval refreshInterval;
+@property (readonly, nonatomic) NSString *lastResponseString;
+@property (readonly, nonatomic) id lastResponseObject;
 
-- (void)load; // replace with getSelf?
-- (void)load:(BOOL)force;
-- (void)loadIfOlderThan:(NSTimeInterval)age; // TODO: implement this!
+// array-related properties (these only apply if target is NSMutableArray)
+@property (strong, nonatomic) Class arrayClass;		// the class of elements if target is a mutable array
+@property (nonatomic) BOOL append; // only applies to arrays; when YES, new elements are appended to the target array and existing elements are not removed
+@property (strong, nonatomic) NSString *sortKey; // experimental--automatically sort an array based on some key (it would be nice if this could also be set up with a protocol)
+
+- (PrestoMetadata *)load; // replace with getSelf?
+- (PrestoMetadata *)load:(BOOL)force;
+- (PrestoMetadata *)loadIfOlderThan:(NSTimeInterval)age; // TODO: implement this!
 // i wonder if the completions should have parameters, such as the target object?
-- (void)loadWithCompletion:(PrestoCallback)completion;
-- (void)loadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure; // todo
+- (PrestoMetadata *)loadWithCompletion:(PrestoCallback)completion;
+- (PrestoMetadata *)loadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure; // todo
 //- (void)loadWithCompletion:(PrestoCallback)completion force:(BOOL)force;
-- (PrestoMetadata *)loadAs:(NSObject *)object; // experimental--the idea here is you can call loadAs on an existing instance to load it in place with the result of some other remote source such as a PUT or POST, rather than replacing it with a new instance (rename loadFrom:?)
+
+// maybe rename this loadFrom: because you're loading from a specific source
+- (PrestoMetadata *)loadFrom:(NSObject *)object; // experimental--the idea here is you can call loadAs on an existing instance to load it in place with the result of some other remote source such as a PUT or POST, rather than replacing it with a new instance (rename loadFrom:?)
+- (PrestoMetadata *)appendFrom:(NSObject *)source;
+
+- (PrestoMetadata *)invalidate;
 
 // note that calling these does not immediately load the object (that happens when you add a completion or dependency)
 - (PrestoMetadata *)getFromURL:(NSURL *)url;
@@ -194,7 +231,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 //- (void)putAndLoad; // assumes the response of the PUT is the current state of the object
 //- (void)postAndLoadSelf; // you really shouldn't need to use this one if your API is properly implemented; POST should always create a new object, so it doesn't make sense to reload an existing object with its result
 
-- (void)loadFromSource:(PrestoSource *)source force:(BOOL)force;
+//- (void)loadFromSource:(PrestoSource *)source force:(BOOL)force;
 - (BOOL)loadWithJSONString:(NSString *)json;
 - (BOOL)loadWithJSONObject:(id)jsonObject;
 - (BOOL)loadWithDictionary:(NSDictionary *)dictionary;
@@ -204,15 +241,18 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (id)arrayOfClass:(Class)class; // this is id to avoid type warnings
 
 - (NSString *)toJSONString;
-- (NSString *)toJSONString:(BOOL)pretty;
+//- (NSString *)toJSONString:(BOOL)pretty;
 - (id)toJSONObject;
 - (NSDictionary *)toDictionary;
-- (NSDictionary *)toDictionaryComplete:(BOOL)complete; // had to add this temporarily until serialization is better
+- (NSDictionary *)toDictionaryWithTemplate:(id)template;
+//- (NSDictionary *)toDictionaryComplete:(BOOL)complete; // had to add this temporarily until serialization is better
 
-- (PrestoMetadata *)withUsername:(NSString *)username password:(NSString *)password;
+- (PrestoMetadata *)withUsername:(NSString *)username password:(NSString *)password; // not implemented
 
 - (PrestoMetadata *)withRequestTransformer:(PrestoRequestTransformer)transformer;
 - (PrestoMetadata *)withResponseTransformer:(PrestoResponseTransformer)transformer;
+
+- (PrestoMetadata *)withTemplate:(NSString *)jsonTemplate;
 
 // Note: The difference between loadWithCompletion: and onComplete: is that while onComplete: will make sure the object is loaded once, loadWithCompletion: performs a soft reload every time it is called.
 

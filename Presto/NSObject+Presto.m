@@ -32,8 +32,8 @@
 
 #pragma mark - NSObject (Presto)
 
-// these are proxies on NSObject to the same methods on the underlying PrestoMetadata class
-// if you don't want any of these proxies, you can just comment them out here and access them explicitly through the .presto property of any object
+// these are proxies on NSObject to the same methods on the underlying PrestoMetadata object
+// if you don't want any of these proxies, you can just comment them out here and access them explicitly through the .presto property of any NSObject
 // similarly, feel free to add additional proxies you would like
 
 @implementation NSObject (Presto)
@@ -82,6 +82,26 @@
 
 - (NSDictionary *)toDictionary {
 	return [self.presto toDictionary]; // does this work? i.e. unambiguously identify the correct method? or does it infinitely create nested metadata? we could add a private "hasMetadata" check if need be.
+}
+
+#pragma mark -
+
+- (PrestoMetadata *)putSelf {
+	return [self.presto putSelf];
+}
+
+- (PrestoMetadata *)postSelf {
+	return [self.presto postSelf];
+}
+
+#pragma mark -
+
+- (PrestoMetadata *)load {
+	return [self.presto load];
+}
+
+- (PrestoMetadata *)invalidate {
+	return [self.presto invalidate];
 }
 
 #pragma mark -

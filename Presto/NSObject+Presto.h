@@ -44,10 +44,16 @@
 - (PrestoMetadata *)deleteFromURL:(NSURL *)url;
 
 - (void)loadWithJSONString:(NSString *)json;
-- (void)loadWithDictionary:(NSDictionary *)dictionary;
+- (BOOL)loadWithDictionary:(NSDictionary *)dictionary;
 
 - (NSString *)toJSONString;
 - (NSDictionary *)toDictionary;
+
+- (PrestoMetadata *)putSelf;
+- (PrestoMetadata *)postSelf;
+
+- (PrestoMetadata *)load;
+- (PrestoMetadata *)invalidate;
 
 - (PrestoMetadata *)onComplete:(PrestoCallback)completion;
 - (PrestoMetadata *)onComplete:(PrestoCallback)success failure:(PrestoCallback)failure;
