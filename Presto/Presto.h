@@ -60,6 +60,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (void)authenticationFailed;		// this is meant to alert the app globally that an authentication has failed, not actually handle the failure
 
 - (NSURL *)identifyingURL;
+- (id<NSCopying>)identifyingKey; // override to provide a unique identifier for an instance (enables singleton in-place loading)
 //- (NSString *)identifyingTemplate; // return something like "http://.../%@"
 - (NSArray *)serializingKeys; // serializableProperties
 
@@ -68,9 +69,11 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @interface Presto : NSObject
 
 @property (weak, nonatomic) NSObject<PrestoDelegate> *delegate;
+@property (strong, nonatomic) NSMutableDictionary *classIndex; // 2D index of instances by class
 @property (nonatomic) NSInteger activeRequests;
 @property (nonatomic) BOOL trackParentObjects; // default YES
 @property (nonatomic) BOOL showActivityIndicator; // default YES
+@property (nonatomic) BOOL overwriteNulls; // default NO -- when NO, in-place loading skips over null-valued fields instead of replacing the existing value
 
 + (Presto *)defaultInstance;
 
@@ -89,12 +92,20 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 + (void)addSerializationKey:(NSString *)key forClass:(Class)class;
 + (void)addSerializationKeys:(NSArray *)keys forClass:(Class)class;
 
+/**
+	Register an instance as a singleton. If there is already an existing instance registered, the new instance will replace it as the designated instance.
+*/
++ (void)registerInstance:(id)instance;
+
 + (PrestoMetadata *)getFromURL:(NSURL *)url;
 + (PrestoMetadata *)putToURL:(NSURL *)url;			// will PUT with no body
 + (PrestoMetadata *)postToURL:(NSURL *)url;			// will POST with no body
 + (PrestoMetadata *)deleteFromURL:(NSURL *)url;
 
 // --
+
+- (id)instantiateClass:(Class)class withDictionary:(NSDictionary *)dict;
+- (void)registerInstance:(id)instance;
 
 - (void)globallyMapRemoteField:(NSString *)field toLocalProperty:(NSString *)property;
 - (void)addGlobalRequestTransformer:(PrestoRequestTransformer)transformer;
@@ -204,16 +215,18 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @property (nonatomic) BOOL append; // only applies to arrays; when YES, new elements are appended to the target array and existing elements are not removed
 @property (strong, nonatomic) NSString *sortKey; // experimental--automatically sort an array based on some key (it would be nice if this could also be set up with a protocol)
 
-- (PrestoMetadata *)load; // replace with getSelf?
-- (PrestoMetadata *)load:(BOOL)force;
-- (PrestoMetadata *)loadIfOlderThan:(NSTimeInterval)age; // TODO: implement this!
+- (PrestoMetadata *)reload; // replace with getSelf?
+- (PrestoMetadata *)reload:(BOOL)force;
+- (PrestoMetadata *)reloadIfOlderThan:(NSTimeInterval)age; // TODO: implement this!
 // i wonder if the completions should have parameters, such as the target object?
-- (PrestoMetadata *)loadWithCompletion:(PrestoCallback)completion;
-- (PrestoMetadata *)loadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure; // todo
+- (PrestoMetadata *)reloadWithCompletion:(PrestoCallback)completion;
+- (PrestoMetadata *)reloadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure; // todo
 //- (void)loadWithCompletion:(PrestoCallback)completion force:(BOOL)force;
 
-// maybe rename this loadFrom: because you're loading from a specific source
-- (PrestoMetadata *)loadFrom:(NSObject *)object; // experimental--the idea here is you can call loadAs on an existing instance to load it in place with the result of some other remote source such as a PUT or POST, rather than replacing it with a new instance (rename loadFrom:?)
+/**
+	Experimental. The idea here is you can call `loadWith` on an existing instance to load it in place with the result of some other remote source such as a PUT or POST, rather than replacing it with a new instance.
+*/
+- (PrestoMetadata *)loadWith:(NSObject *)object;
 - (PrestoMetadata *)appendFrom:(NSObject *)source;
 
 - (PrestoMetadata *)invalidate;
@@ -241,6 +254,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (id)arrayOfClass:(Class)class; // this is id to avoid type warnings
 
 - (NSString *)toJSONString;
+- (NSString *)toJSONStringWithTemplate:(id)template;
 //- (NSString *)toJSONString:(BOOL)pretty;
 - (id)toJSONObject;
 - (NSDictionary *)toDictionary;
@@ -254,7 +268,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 - (PrestoMetadata *)withTemplate:(NSString *)jsonTemplate;
 
-// Note: The difference between loadWithCompletion: and onComplete: is that while onComplete: will make sure the object is loaded once, loadWithCompletion: performs a soft reload every time it is called.
+// Note: The difference between reloadWithCompletion: and onComplete: is that while onComplete: will make sure the object is loaded once, reloadWithCompletion: performs a soft reload every time it is called.
 
 // it's important to note that completions will always be called, whereas dependencies keep weak references and will only be called if their target is still alive
 

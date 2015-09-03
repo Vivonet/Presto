@@ -52,7 +52,7 @@
 - (PrestoMetadata *)putSelf;
 - (PrestoMetadata *)postSelf;
 
-- (PrestoMetadata *)load;
+- (PrestoMetadata *)reload;
 - (PrestoMetadata *)invalidate;
 
 - (PrestoMetadata *)onComplete:(PrestoCallback)completion;

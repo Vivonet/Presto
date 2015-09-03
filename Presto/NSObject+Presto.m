@@ -96,8 +96,8 @@
 
 #pragma mark -
 
-- (PrestoMetadata *)load {
-	return [self.presto load];
+- (PrestoMetadata *)reload {
+	return [self.presto reload];
 }
 
 - (PrestoMetadata *)invalidate {
