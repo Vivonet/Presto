@@ -53,6 +53,7 @@
 - (PrestoMetadata *)postSelf;
 
 - (PrestoMetadata *)reload;
+- (PrestoMetadata *)reloadIfOlderThan:(NSTimeInterval)age;
 - (PrestoMetadata *)invalidate;
 
 - (PrestoMetadata *)onComplete:(PrestoCallback)completion;

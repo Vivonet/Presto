@@ -100,6 +100,10 @@
 	return [self.presto reload];
 }
 
+- (PrestoMetadata *)reloadIfOlderThan:(NSTimeInterval)age {
+	return [self.presto reloadIfOlderThan:age];
+}
+
 - (PrestoMetadata *)invalidate {
 	return [self.presto invalidate];
 }

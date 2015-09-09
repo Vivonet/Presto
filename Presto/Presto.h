@@ -66,6 +66,11 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 @end
 
+/**
+	The Presto class represents a common access point for most global operations within the framework. For example, the `objectOfClass:`, `arrayOfClass:`, `getFromURL:`, etc. methods are replicated as class methods upon this class and provide an alternate means to instantiate objects than creating them directly.
+	
+	It also provides the general interface for customizing global transformers and mappings of fields to properties.
+*/
 @interface Presto : NSObject
 
 @property (weak, nonatomic) NSObject<PrestoDelegate> *delegate;
@@ -77,7 +82,16 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 + (Presto *)defaultInstance;
 
+/**
+	Provides an alternate means of instantiating a class.
+	
+	This is effectively equivalent to just instantiating the class normally except that the PrestoMetadata instance is also created immediately at this time. It is included mainly for syntactic symmetry.
+*/
 + (id)objectOfClass:(Class)class;
+
+/**
+	Instantiates an empty typed `NSMutableArray` instance. Similar to simply instantiating an `NSMutableArray` directly, except that the array knows what class of object it contains. This is important for arrays that are to be loaded remotely from a subsequent Presto call.
+*/
 + (id)arrayOfClass:(Class)class;
 
 // these are duplicated here for convenience and apply to [Presto defaultInstance]
@@ -217,7 +231,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 - (PrestoMetadata *)reload; // replace with getSelf?
 - (PrestoMetadata *)reload:(BOOL)force;
-- (PrestoMetadata *)reloadIfOlderThan:(NSTimeInterval)age; // TODO: implement this!
+- (PrestoMetadata *)reloadIfOlderThan:(NSTimeInterval)age;
 // i wonder if the completions should have parameters, such as the target object?
 - (PrestoMetadata *)reloadWithCompletion:(PrestoCallback)completion;
 - (PrestoMetadata *)reloadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure; // todo
@@ -232,11 +246,35 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (PrestoMetadata *)invalidate;
 
 // note that calling these does not immediately load the object (that happens when you add a completion or dependency)
+
+/**
+	Sets the source of the receiving object to the provided URL.
+	
+	Note: The remote source is not loaded immediately upon calling this method, unless it already has completions and/or dependencies. Loading generally takes place upon the first completion or dependency attached to the object. If you wish to force the object to load immediately (for example to pre-fetch information that will be needed in the future), call `reload` after calling this method.
+*/
 - (PrestoMetadata *)getFromURL:(NSURL *)url;
+/**
+	Creates a new metadata object that represents the response of a PUT request to the provided URL using the receiving object as the body of the request.
+	
+	You should type the response by calling either `objectOfClass:` or `arrayOfClass:` upon the returned object.
+*/
 - (PrestoMetadata *)putToURL:(NSURL *)url;
+/**
+	Creates a new metadata object that represents the response of a POST request to the provided URL using the receiving object as the body of the request.
+	
+	You should type the response by calling either `objectOfClass:` or `arrayOfClass:` upon the returned object.
+*/
 - (PrestoMetadata *)postToURL:(NSURL *)url;
+/**
+	Creates a new metadata object that represents the response of a DELETE request to the provided URL using the receiving object as the body of the request. If you do not need a body in the DELETE request, instead call the `deleteFromURL:` class method of `Presto`.
+	
+	You should type the response by calling either `objectOfClass:` or `arrayOfClass:` upon the returned object.
+*/
 - (PrestoMetadata *)deleteFromURL:(NSURL *)url;
 
+/**
+	Equivalent to `reload`. Exists for syntactic symmetry.
+*/
 - (PrestoMetadata *)getSelf;
 - (PrestoMetadata *)putSelf;
 - (PrestoMetadata *)postSelf;
