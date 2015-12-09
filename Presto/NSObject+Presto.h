@@ -35,15 +35,52 @@
 
 @interface NSObject (Presto)
 
+/**
+	Returns `YES` if the object is currently waiting on a load request to the server.
+	
+	It doesn’t matter if the object has already been loaded in the past or not.
+*/
 @property (nonatomic, readonly) BOOL isLoading;
+/**
+	Returns `YES` if the object has been successfully loaded at some point in the past. It does not necessarily reflect the status of the latest request.
+*/
 @property (nonatomic, readonly) BOOL isLoaded;
 
+/**
+	Loads the current object with the data returned from the requested URL.
+	
+	Returns the current object’s metadata record which can be used for chaining calls.
+*/
 - (PrestoMetadata *)getFromURL:(NSURL *)url;
+/** Creates (or identifies*) a metadata object that represents the response of sending the current object as the payload of a `PUT` request to the given URL.
+
+	You can chain multiple calls together to provide additional information to the request and generally end the chain with either `objectOfClass:` or `arrayOfClass:` to cast the response to the appropriate response class.
+	
+	*Note: If the response class implements an `identifyingKey` method, Presto will use that identifying key to look up and return any existing instance, after loading it with the information returned in the response.
+*/
 - (PrestoMetadata *)putToURL:(NSURL *)url;
+/** Creates (or identifies*) a metadata object that represents the response of sending the current object as the payload of a `POST` request to the given URL.
+
+	You can chain multiple calls together to provide additional information to the request and generally end the chain with either `objectOfClass:` or `arrayOfClass:` to cast the response to the appropriate class.
+	
+	*Note: If the response class implements an `identifyingKey` method, Presto will use that identifying key to look up and return any existing instance, after loading it with the information returned in the response.
+*/
 - (PrestoMetadata *)postToURL:(NSURL *)url;
+/** Creates (or identifies*) a metadata object that represents the response of sending the current object as the payload of a `DELETE` request to the given URL.
+
+	You can chain multiple calls together to provide additional information to the request and generally end the chain with either `objectOfClass:` or `arrayOfClass:` to cast the response to the appropriate class.
+	
+	*Note: If the response class implements an `identifyingKey` method, Presto will use that identifying key to look up and return any existing instance, after loading it with the information returned in the response.
+*/
 - (PrestoMetadata *)deleteFromURL:(NSURL *)url;
 
+/**
+	Loads the current object with the data represented by a JSON-encoded string, as if the server had returned that string from a load request.
+*/
 - (void)loadWithJSONString:(NSString *)json;
+/**
+	Loads the current object with the data represented in an `NSDictionary`.
+*/
 - (BOOL)loadWithDictionary:(NSDictionary *)dictionary;
 
 - (NSString *)toJSONString;
@@ -58,7 +95,6 @@
 
 - (PrestoMetadata *)onComplete:(PrestoCallback)completion;
 - (PrestoMetadata *)onComplete:(PrestoCallback)success failure:(PrestoCallback)failure;
-//
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency;
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target;
 

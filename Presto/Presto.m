@@ -37,6 +37,7 @@
 #import "Presto.h"
 
 static const BOOL LOG_PAYLOADS = YES;
+static const BOOL LOG_HEADERS = YES;
 static const BOOL LOG_WARNINGS = YES;
 static const BOOL LOG_ERRORS = YES;
 static const BOOL LOG_VERBOSE = NO;
@@ -83,6 +84,10 @@ static id ValueForUndefinedKey;
 	return _defaultInstance;
 }
 
++ (Class)defaultErrorClass {
+	return [Presto defaultInstance].defaultErrorClass;
+}
+
 // this method actually amounts to little more than simply instantiating the object yourself, it's really only here for symmetry...
 + (id)objectOfClass:(Class)class {
 	return [[PrestoMetadata new] objectOfClass:class];
@@ -103,6 +108,10 @@ static id ValueForUndefinedKey;
 
 + (void)addGlobalResponseTransformer:(PrestoResponseTransformer)transformer {
 	[[Presto defaultInstance] addGlobalResponseTransformer:transformer];
+}
+
++ (void)setDefaultErrorClass:(Class)defaultErrorClass {
+	[Presto defaultInstance].defaultErrorClass = defaultErrorClass;
 }
 
 + (void)mapRemoteField:(NSString *)field toLocalProperty:(NSString *)property forClass:(Class)class {
@@ -605,7 +614,7 @@ static id ValueForUndefinedKey;
 //		for ( PrestoCallbackRecord* dependency in self.dependencies )
 //			dependency.weakTarget = strongTarget;
 		
-		[self loadTarget]; // loads it if there is a payload waiting
+		[self loadResponse]; // loads it if there is a payload waiting
 	}
 	
 	return strongTarget;
@@ -618,6 +627,10 @@ static id ValueForUndefinedKey;
 		return [strongTarget class];
 	else
 		return _targetClass;
+}
+
+- (Class)errorClass {
+	return _errorClass ?: self.manager.defaultErrorClass;
 }
 
 - (BOOL)isLoading {
@@ -672,6 +685,10 @@ static id ValueForUndefinedKey;
 //			return source.error ?: [NSError new]; // create error for status code?
 //	}
 //	return nil;
+}
+
+- (id)errorResponse {
+	return self.source.errorResponse;
 }
 
 - (void)setSource:(PrestoSource *)source {
@@ -958,7 +975,7 @@ static id ValueForUndefinedKey;
 
 // we might consider making this a config property instead/in addition
 - (PrestoMetadata *)reloadIfOlderThan:(NSTimeInterval)age {
-	if ( [[self.source.loadedTime dateByAddingTimeInterval:age] compare:[NSDate date]] == NSOrderedAscending )
+	if ( ( !self.isLoaded && !self.isLoading ) || [[self.source.loadedTime dateByAddingTimeInterval:age] compare:[NSDate date]] == NSOrderedAscending )
 		[self reload:YES]; // not sure if we need to force it
 	return self;
 }
@@ -1070,12 +1087,46 @@ static id ValueForUndefinedKey;
 	return result;
 }
 
+#pragma mark -
+
+- (PrestoMetadata *)deferLoad {
+	self.isDeferred = YES;
+	return self;
+}
+
 - (PrestoMetadata *)invalidate {
 	// experimental--there is probably more we need to consider here, like if the object is currently loading or has completions
 	self.source.isLoaded = NO;
 	
 	if ( self.callbacks ) // was just dependencies, but why not for completions too?
 		[self reload];
+	
+	return self;
+}
+
+// this method manually calls dependency blocks, but not completions
+// TODO: this logic is duplicated; should be moved into callDependencyBlocks:(BOOL)changed
+- (PrestoMetadata *)signalChange {
+	__weak __block typeof(self) weakSelf = self;
+	
+	// this is replicated here because callSuccessBlocks calls both dependencies and completions; we should probably enhance that method to allow us to call it with options instead of replicating logic
+	
+	[self callSuccessBlocks:YES includeCompletions:NO];
+	
+//	for ( PrestoCallbackRecord *callback in self.callbacks ) {
+//		if ( ![callback isKindOfClass:[PrestoDependencyRecord class]] )
+//			continue;
+//		PrestoDependencyRecord *dependency = (PrestoDependencyRecord *)callback;
+//		__strong id owner = dependency.owner;//strongTarget ?: rec.weakTarget;
+//		if ( owner || !dependency.hasOwner ) {
+//			dispatch_async(dispatch_get_main_queue(), ^{
+//				__strong typeof(weakSelf) strongSelf = weakSelf;
+//				dependency.success( strongSelf.target );
+//			});
+//		}
+//	}
+	
+//	[self.callbacks removeObjectsInArray:orphans]; // verify
 	
 	return self;
 }
@@ -1095,6 +1146,8 @@ static id ValueForUndefinedKey;
 			return;
 	}
 	
+	self.isDeferred = NO; // if we are presently loading, we are no longer deferred
+	
 	if ( source.isLoading && !force )
 		return; // already loading
 	
@@ -1112,9 +1165,16 @@ static id ValueForUndefinedKey;
 	}
 	
 	[source transformRequest];
+	
+	__block NSMutableString *requestHeaders = [NSMutableString new];
+	if ( LOG_HEADERS ) {
+		[source.request.allHTTPHeaderFields enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull key, NSString * _Nonnull obj, BOOL * _Nonnull stop) {
+			[requestHeaders appendFormat:@"\n   %@: %@", key, obj];
+		}];
+	}
 
 	if ( LOG_PAYLOADS )
-		PRLog(@"▶ %@ %@%@", source.request.HTTPMethod, source.request.URL.absoluteString, source.payload || source.payloadData ? [NSString stringWithFormat:@"\n%@", [[NSString alloc] initWithData:source.request.HTTPBody encoding:NSUTF8StringEncoding]] : @"");
+		PRLog(@"▶ %@ %@%@%@", source.request.HTTPMethod, source.request.URL.absoluteString, requestHeaders, source.payload || source.payloadData ? [NSString stringWithFormat:@"\n%@", [[NSString alloc] initWithData:source.request.HTTPBody encoding:NSUTF8StringEncoding]] : @"");
 	
 	__weak __block typeof(self) weakSelf = self;
 	
@@ -1149,9 +1209,16 @@ static id ValueForUndefinedKey;
 				[self.manager.delegate authenticationFailed]; // so apps can handle a global log-out action if desired
 		}
 		
+		__block NSMutableString *responseHeaders = [NSMutableString new];
+		if ( LOG_HEADERS ) {
+			[((NSHTTPURLResponse *)response).allHeaderFields enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
+				[responseHeaders appendFormat:@"\n   %@: %@", key, obj];
+			}];
+		}
+		
 		NSString* jsonString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
 		if ( LOG_PAYLOADS ) {
-			PRLog(@"◀ %d %@ %@\n%@", (int)source.statusCode, source.request.HTTPMethod, source.url.absoluteString, jsonString);
+			PRLog(@"◀ %d %@ %@%@\n%@", (int)source.statusCode, source.request.HTTPMethod, source.url.absoluteString, responseHeaders, jsonString);
 		}
 		
 		if ( !strongSelf || !strongTarget ) {
@@ -1183,11 +1250,12 @@ static id ValueForUndefinedKey;
 //				});
 				return;
 			}
+			[strongSelf loadResponse];
 			[strongSelf callFailureBlocks:YES]; // fix this parameter?
 		} else {
 			if ( changed )
-				[self loadTarget];
-			[strongSelf callSuccessBlocks:changed];
+				[self loadResponse];
+			[strongSelf callSuccessBlocks:changed includeCompletions:YES];
 		}
 		
 //		if ( !source.error && source.statusCode == 200 ) {
@@ -1210,26 +1278,59 @@ static id ValueForUndefinedKey;
 	}];
 }
 
-- (void)loadTarget {
+- (void)loadResponse {
 	if ( !self.source.lastPayload || !self.source.lastPayload.length )
 		return; // nothing to load
 	
 	NSError* jsonError;
 	id jsonObject = [NSJSONSerialization JSONObjectWithData:self.source.lastPayload options:0 error:&jsonError];
-
+	
+	// not sure if this is the best place for this
 	if ( self.manager.connectionDropped ) {
 		self.manager.connectionDropped = NO;
 		if ( [self.manager.delegate respondsToSelector:@selector(connectionEstablished)] )
 			[self.manager.delegate connectionEstablished];
 	}
+	
 	if ( jsonObject ) {
-		jsonObject = [self.source transformResponse:jsonObject]; // or do we want to store jsonObject on the response and just call [transformResponse]?
-		[self loadWithJSONObject:jsonObject];
-		self.source.isLoaded = YES;
-		
-		NSAssert(self.source.error == nil, @"Source error should be nil here.");
+		if ( !self.source.error && self.source.statusCode == 200 ) {
+			jsonObject = [self.source transformResponse:jsonObject]; // or do we want to store jsonObject on the response and just call [transformResponse]?
+			[self loadWithJSONObject:jsonObject];
+			self.source.isLoaded = YES;
+			
+//			NSAssert(self.source.error == nil, @"Source error should be nil here.");
+		} else {
+			// TODO: do we want to transform the response in the event of an error??
+			id errorResponse = jsonObject;
+			if ( self.errorClass && [jsonObject isKindOfClass:[NSDictionary class]] )
+				errorResponse = [self.manager instantiateClass:self.errorClass withDictionary:jsonObject];
+			// TODO: add support for arrays using errorClass as the arrayClass
+			self.source.errorResponse = errorResponse;
+		}
 	}
 }
+
+//- (void)loadTarget {
+//	if ( !self.source.lastPayload || !self.source.lastPayload.length )
+//		return; // nothing to load
+//	
+//	NSError* jsonError;
+//	id jsonObject = [NSJSONSerialization JSONObjectWithData:self.source.lastPayload options:0 error:&jsonError];
+//
+//	if ( self.manager.connectionDropped ) {
+//		self.manager.connectionDropped = NO;
+//		if ( [self.manager.delegate respondsToSelector:@selector(connectionEstablished)] )
+//			[self.manager.delegate connectionEstablished];
+//	}
+//	
+//	if ( jsonObject ) {
+//		jsonObject = [self.source transformResponse:jsonObject]; // or do we want to store jsonObject on the response and just call [transformResponse]?
+//		[self loadWithJSONObject:jsonObject];
+//		self.source.isLoaded = YES;
+//		
+//		NSAssert(self.source.error == nil, @"Source error should be nil here.");
+//	}
+//}
 
 - (BOOL)loadWithJSONString:(NSString *)json {
 	NSError* jsonError;
@@ -1581,6 +1682,11 @@ static id ValueForUndefinedKey;
 
 // TODO: add dictionaryOfClass??
 
+- (PrestoMetadata *)withErrorClass:(Class)class {
+	self.errorClass = class;
+	return self;
+}
+
 #pragma mark -
 
 - (NSString *)toJSONString {
@@ -1847,8 +1953,16 @@ static id ValueForUndefinedKey;
 	// slight hack here: if we add a dependency and there are no sources at all, we should probably still call it (allows for manually controlling an object that may not necessarily be loaded from the server)
 	if ( self.isLoaded ) // used to have && !isLoading, but i removed this to support changed flag
 		dependency( self.target );
-	else if ( !self.isLoading )
-		[self reload];
+	else if ( !self.isLoading ) {
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if ( !self.isLoading && !self.isDeferred )
+				[self reload];
+			else if ( self.isDeferred ) {
+				if ( LOG_VERBOSE )
+					PRLog(@"Presto Notice: Deferring load of %@", self.source.url.absoluteString)
+			}
+		});
+	}
 	
 	return self;
 }
@@ -1877,7 +1991,12 @@ static id ValueForUndefinedKey;
 		
 		if ( !self.isLoading ) {
 			dispatch_async(dispatch_get_main_queue(), ^{
-				[self reload];
+				if ( !self.isLoading && !self.isDeferred ) // TODO: do we want to defer completions as well? or just dependencies?
+					[self reload];
+				else if ( self.isDeferred ) {
+					if ( LOG_VERBOSE )
+						PRLog(@"Presto Notice: Deferring load of %@", self.source.url.absoluteString)
+				}
 			});
 		}
 	}
@@ -1965,29 +2084,7 @@ static id ValueForUndefinedKey;
 
 #pragma mark -
 
-// this method manually calls dependency blocks, but not completions
-// TODO: this logic is duplicated; should be moved into callDependencyBlocks:(BOOL)changed
-- (void)signalChange {
-	__weak __block typeof(self) weakSelf = self;
-	
-	for ( PrestoCallbackRecord *callback in self.callbacks ) {
-		if ( ![callback isKindOfClass:[PrestoDependencyRecord class]] )
-			continue;
-		PrestoDependencyRecord *dependency = (PrestoDependencyRecord *)callback;
-		__strong id owner = dependency.owner;//strongTarget ?: rec.weakTarget;
-		if ( owner || !dependency.hasOwner ) {
-			dispatch_async(dispatch_get_main_queue(), ^{
-				__strong typeof(weakSelf) strongSelf = weakSelf;
-				dependency.success( strongSelf.target );
-			});
-		}
-		// FIXME: we have to remove the callback records for dead targets
-	}
-}
-
-#pragma mark -
-
-- (void)callSuccessBlocks:(BOOL)changed {
+- (void)callSuccessBlocks:(BOOL)changed includeCompletions:(BOOL)includeCompletions {
 //	if ( !self.isLoaded )
 //		return;
 	
@@ -2014,13 +2111,15 @@ static id ValueForUndefinedKey;
 	
 	for ( PrestoCallbackRecord *callback in callbacks ) {
 		if ( [callback isKindOfClass:[PrestoCompletionRecord class]] ) {
-			PrestoCompletionRecord *completion = (PrestoCompletionRecord *)callback;
-			// FIXME: make sure this dispatch is enabled for release!
-			dispatch_async(dispatch_get_main_queue(), ^{
-				__strong typeof(weakSelf) strongSelf = weakSelf;
-				completion.success( strongSelf.target );
-			});
-			[self.callbacks removeObject:completion];
+			if ( includeCompletions ) {
+				PrestoCompletionRecord *completion = (PrestoCompletionRecord *)callback;
+				// FIXME: make sure this dispatch is enabled for release!
+				dispatch_async(dispatch_get_main_queue(), ^{
+					__strong typeof(weakSelf) strongSelf = weakSelf;
+					completion.success( strongSelf.target );
+				});
+				[self.callbacks removeObject:completion];
+			}
 		} else if ( changed && [callback isKindOfClass:[PrestoDependencyRecord class]] ) {
 			PrestoDependencyRecord *dependency = (PrestoDependencyRecord *)callback;
 			__strong id owner = dependency.owner;

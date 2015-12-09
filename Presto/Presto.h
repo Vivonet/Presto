@@ -71,16 +71,18 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 	
 	It also provides the general interface for customizing global transformers and mappings of fields to properties.
 */
-@interface Presto : NSObject
+@interface Presto : NSObject // we should rename/split-off PrestoContext
 
 @property (weak, nonatomic) NSObject<PrestoDelegate> *delegate;
 @property (strong, nonatomic) NSMutableDictionary *classIndex; // 2D index of instances by class
+@property (strong, nonatomic) Class defaultErrorClass;
 @property (nonatomic) NSInteger activeRequests;
 @property (nonatomic) BOOL trackParentObjects; // default YES
 @property (nonatomic) BOOL showActivityIndicator; // default YES
 @property (nonatomic) BOOL overwriteNulls; // default NO -- when NO, in-place loading skips over null-valued fields instead of replacing the existing value
 
 + (Presto *)defaultInstance;
++ (Class)defaultErrorClass;
 
 /**
 	Provides an alternate means of instantiating a class.
@@ -98,6 +100,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 + (void)globallyMapRemoteField:(NSString *)field toLocalProperty:(NSString *)property;
 + (void)addGlobalRequestTransformer:(PrestoRequestTransformer)transformer;
 + (void)addGlobalResponseTransformer:(PrestoResponseTransformer)transformer;
++ (void)setDefaultErrorClass:(Class)defaultErrorClass;
 
 + (void)mapRemoteField:(NSString *)field toLocalProperty:(NSString *)property forClass:(Class)class;
 //+ (void)addRequestTransformer:(PrestoRequestTransformer)transformer forClass:(Class)class;
@@ -188,6 +191,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @property (strong, nonatomic) id serializationTemplate;		// template for serializing the payload
 @property (nonatomic) NSInteger statusCode;					// the last HTTP status code
 @property (strong, nonatomic) NSError* error;				// we received an error from the last request
+@property (strong, nonatomic) id errorResponse;		// can probably improve this name
 @property (nonatomic) NSTimeInterval refreshInterval;
 //@property (strong, nonatomic) NSMutableArray* serializationKeys; // this is a temp hack to get around knowing what properties to serialize; this will be improved!
 @property (nonatomic) BOOL active; // allows a source to be turned on/off
@@ -199,22 +203,26 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 @end
 
-// TODO: since this by and large the main class in Presto perhaps we should rename this class to Presto and rename the Presto class to something like PrestoManager
+// TODO: since this by and large the main class in Presto perhaps we should rename this class to Presto and rename the Presto class to something like PrestoManager or PrestoContext
 // of course we'd want to move the global class methods down here to keep the syntax the same.
 @interface PrestoMetadata : NSObject
 
+// TODO: we may actually want to support multiple targets to allow the same metadata to be shared by several objects (for example if two metadatas are merged)
 @property (readonly, nonatomic) id target;			// the object that this metadata applies to (rename host?)
 @property (weak, nonatomic) NSObject *parent; // a weak reference to the object that contains this object
 @property (strong, nonatomic) Class targetClass;
-@property (strong, nonatomic) Presto *manager;		// the manager this object should use
+@property (strong, nonatomic) Class errorClass;		// the class of object to instantiate as the response if the request fails (returns non-200)
+@property (strong, nonatomic) Presto *manager;		// the manager this object should use (rename context?)
 // TODO: i think we should deprecate multiple sources for simplicity and reverse updating etc.
 //@property (readonly, nonatomic) NSMutableSet *sources;			// keyed on propertyName or NSNull
 @property (strong, nonatomic) PrestoSource *source; // temp--we should move those props back in here
+@property (nonatomic) BOOL isDeferred;
 @property (readonly, nonatomic) BOOL isLoading;
 @property (readonly, nonatomic) BOOL isLoaded;
 @property (readonly, nonatomic) BOOL isCompleted;	// all of the object's sources are either loaded or errored
 //@property (readonly, nonatomic) BOOL isSuccessful;	// true if the server returned 200 and the object was successfully loaded
-@property (readonly, nonatomic) NSError* error;					// we received an error from the last request
+@property (readonly, nonatomic) NSError *error;					// we received an error from the last request
+@property (readonly, nonatomic) id errorResponse;		// the (possibly classed) response object from the last request
 @property (readonly, nonatomic) NSInteger statusCode;
 //@property (strong, nonatomic) NSDate* lastUpdate;
 //@property (strong, nonatomic) NSMutableArray* completions;
@@ -243,7 +251,9 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (PrestoMetadata *)loadWith:(NSObject *)object;
 - (PrestoMetadata *)appendFrom:(NSObject *)source;
 
+- (PrestoMetadata *)deferLoad;
 - (PrestoMetadata *)invalidate;
+- (PrestoMetadata *)signalChange; // experimental--calls dependency blocks manually
 
 // note that calling these does not immediately load the object (that happens when you add a completion or dependency)
 
@@ -276,7 +286,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 	Equivalent to `reload`. Exists for syntactic symmetry.
 */
 - (PrestoMetadata *)getSelf;
-- (PrestoMetadata *)putSelf;
+- (PrestoMetadata *)putSelf; // TODO: verify that calling this on a class that implements an identifyingKey returns the current object if the response includes its id (i.e. in-place load)
 - (PrestoMetadata *)postSelf;
 - (PrestoMetadata *)deleteSelf;
 //- (void)putAndLoad; // assumes the response of the PUT is the current state of the object
@@ -290,6 +300,7 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 
 - (id)objectOfClass:(Class)class;
 - (id)arrayOfClass:(Class)class; // this is id to avoid type warnings
+- (PrestoMetadata *)withErrorClass:(Class)class;
 
 - (NSString *)toJSONString;
 - (NSString *)toJSONStringWithTemplate:(id)template;
@@ -304,6 +315,11 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (PrestoMetadata *)withRequestTransformer:(PrestoRequestTransformer)transformer;
 - (PrestoMetadata *)withResponseTransformer:(PrestoResponseTransformer)transformer;
 
+/**
+	This is a handy function that accepts a sample JSON payload and uses it as a template to construct a corresponding payload with the same fields and data from the current instance.
+	
+	Only the keys are used; the values and their types are ignored.
+*/
 - (PrestoMetadata *)withTemplate:(NSString *)jsonTemplate;
 
 // Note: The difference between reloadWithCompletion: and onComplete: is that while onComplete: will make sure the object is loaded once, reloadWithCompletion: performs a soft reload every time it is called.
@@ -316,8 +332,6 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 // TODO: consider changing "withTarget" to "withViewController" since that's really its intended purpose
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency;
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target;
-
-- (void)signalChange; // experimental--calls dependency blocks manually
 
 - (void)uninstall; // uninstalls the current metadata object from its host
 
