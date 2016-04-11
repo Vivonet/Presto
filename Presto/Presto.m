@@ -37,7 +37,7 @@
 #import "Presto.h"
 
 static const BOOL LOG_PAYLOADS = YES;
-static const BOOL LOG_HEADERS = YES;
+static const BOOL LOG_HEADERS = NO;
 static const BOOL LOG_WARNINGS = YES;
 static const BOOL LOG_ERRORS = YES;
 static const BOOL LOG_VERBOSE = NO;
@@ -597,6 +597,8 @@ static id ValueForUndefinedKey;
 	if ( !strongTarget ) {
 		if ( self.targetClass )
 			strongTarget = [[self.targetClass alloc] init];
+		else if ( self.source.lastPayload && self.source.lastPayload.length > 0 && [[[NSString alloc] initWithData:self.source.lastPayload encoding:NSUTF8StringEncoding] characterAtIndex:0] == '[' )
+			strongTarget = [[NSMutableArray alloc] init];
 		else
 			strongTarget = [[NSMutableDictionary alloc] init];
 		
@@ -644,7 +646,7 @@ static id ValueForUndefinedKey;
 }
 
 - (BOOL)isLoaded {
-	return self.source.isLoaded;
+	return !self.source || self.source.isLoaded;
 //	if ( self.sources.count == 0 )
 //		return NO; // we don't consider an object with no source to be loaded
 	
@@ -657,7 +659,7 @@ static id ValueForUndefinedKey;
 }
 
 - (BOOL)isCompleted {
-	return self.source.isCompleted;
+	return !self.source || self.source.isCompleted;
 //	if ( self.sources.count == 0 )
 //		return NO;
 	
@@ -701,15 +703,7 @@ static id ValueForUndefinedKey;
 	source.target = self;
 	_source = source;
 	
-	// this should probably be moved into setUrl eventually
-	// if there are any observers, load the object immediately
-	if ( self.callbacks.count/* self.completions.count || self.dependencies.count*/ ) {
-		// this is wrapped in a dispatch_async so any further metadata configuration can happen on the current thread before it is kicked off
-		// (in fact perhaps all loads should be async??)
-		dispatch_async(dispatch_get_main_queue(), ^{
-			[self reload];
-		});
-	}
+	[self invalidate];
 }
 
 - (NSInteger)statusCode {
@@ -964,8 +958,7 @@ static id ValueForUndefinedKey;
 
 - (PrestoMetadata *)reload {
 //	[self loadWithCompletion:nil force:NO];
-	[self reload:NO];
-	return self;
+	return [self reload:NO];
 }
 
 - (PrestoMetadata *)reload:(BOOL)force {
@@ -1054,8 +1047,7 @@ static id ValueForUndefinedKey;
 }
 
 - (PrestoMetadata *)getSelf {
-	[self reload];
-	return self;
+	return [self reload];
 }
 
 - (PrestoMetadata *)putSelf {
@@ -1066,7 +1058,7 @@ static id ValueForUndefinedKey;
 	return [[self postToURL:self.source.url] reload]; // puts and posts don't need an observer to load
 }
 
-- (PrestoMetadata *)loadWith:(NSObject *)object {
+- (PrestoMetadata *)loadWithObject:(NSObject *)object {
 	// TODO: we *need* to copy the whole metadata over (including observers), not just the source
 	((NSObject *)self.target).presto.source = object.presto.source;
 	object.presto.source = nil;
@@ -1081,7 +1073,7 @@ static id ValueForUndefinedKey;
 		return nil;
 	}
 	
-	PrestoMetadata *result = [self loadWith:source];
+	PrestoMetadata *result = [self loadWithObject:source];
 	result.append = YES; // is it safe to set this *after* the above call? if it's guaranteed to be decoupled then yes
 	
 	return result;
@@ -1098,8 +1090,15 @@ static id ValueForUndefinedKey;
 	// experimental--there is probably more we need to consider here, like if the object is currently loading or has completions
 	self.source.isLoaded = NO;
 	
-	if ( self.callbacks ) // was just dependencies, but why not for completions too?
-		[self reload];
+	// if there are any observers, load the object immediately
+	// TODO: should we skip this if deferLoad is true??
+	if ( self.callbacks.count/* self.completions.count || self.dependencies.count*/ ) {
+		// this is wrapped in a dispatch_async so any further metadata configuration can happen on the current thread before it is kicked off
+		// (in fact perhaps all loads should be async??)
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self reload];
+		});
+	}
 	
 	return self;
 }
@@ -1107,7 +1106,7 @@ static id ValueForUndefinedKey;
 // this method manually calls dependency blocks, but not completions
 // TODO: this logic is duplicated; should be moved into callDependencyBlocks:(BOOL)changed
 - (PrestoMetadata *)signalChange {
-	__weak __block typeof(self) weakSelf = self;
+//	__weak __block typeof(self) weakSelf = self;
 	
 	// this is replicated here because callSuccessBlocks calls both dependencies and completions; we should probably enhance that method to allow us to call it with options instead of replicating logic
 	
@@ -1143,7 +1142,7 @@ static id ValueForUndefinedKey;
 	if ( !source.url ) {
 		if ( LOG_VERBOSE )
 			PRLog(@"Presto Notice: Attempted to load an object with no source. You may be attempting to attach a completion/dependency to the wrong object, or have forgotten to provide a source for this object.");
-			return;
+		return;
 	}
 	
 	self.isDeferred = NO; // if we are presently loading, we are no longer deferred
@@ -1185,7 +1184,7 @@ static id ValueForUndefinedKey;
 	// TODO: set source.connection?
 	[NSURLConnection sendAsynchronousRequest:source.request queue:[NSOperationQueue mainQueue] completionHandler:^(NSURLResponse *response, NSData *data, NSError *connectionError) {
 		__strong typeof(weakSelf) strongSelf = weakSelf;
-		__strong id strongTarget = strongSelf.target;
+//		__strong id strongTarget = strongSelf.target;
 		
 		strongSelf.manager.activeRequests--; // FIXME: (nonurgent) this can technically not be called if weakSelf disappears, leaving activeRequests in an incorrect state
 			
@@ -1220,6 +1219,8 @@ static id ValueForUndefinedKey;
 		if ( LOG_PAYLOADS ) {
 			PRLog(@"◀ %d %@ %@%@\n%@", (int)source.statusCode, source.request.HTTPMethod, source.url.absoluteString, responseHeaders, jsonString);
 		}
+		
+		__strong id strongTarget = strongSelf.target;
 		
 		if ( !strongSelf || !strongTarget ) {
 			if ( LOG_ZOMBIES )
@@ -1951,6 +1952,8 @@ static id ValueForUndefinedKey;
 	[self.callbacks addObject:rec];
 	
 	// slight hack here: if we add a dependency and there are no sources at all, we should probably still call it (allows for manually controlling an object that may not necessarily be loaded from the server)
+	// should we perhaps wrap the isLoaded check in an async block so as to decouple the check from the definition of the source
+	// typically we always define the source first so perhaps this isn't a big deal, but for completeness we probably should
 	if ( self.isLoaded ) // used to have && !isLoading, but i removed this to support changed flag
 		dependency( self.target );
 	else if ( !self.isLoading ) {
@@ -1969,7 +1972,7 @@ static id ValueForUndefinedKey;
 
 - (PrestoMetadata *)onComplete:(PrestoCallback)success failure:(PrestoCallback)failure {
 	// if this is called on an immutable array, we assume it is an array of presto objects because immutable arrays can't be loaded dynamically
-	if ( [self.targetClass isSubclassOfClass:[NSArray class]] && ![self.targetClass isSubclassOfClass:[NSMutableArray class]] && !self.source.url && !self.arrayClass ) {
+	if ( self.targetClass == NSClassFromString(@"__NSArrayI") && ![self.targetClass isSubclassOfClass:[NSMutableArray class]] && !self.source.url && !self.arrayClass ) {
 		[self addSetCompletion:success failure:failure];
 		return self;
 	}
@@ -2005,7 +2008,8 @@ static id ValueForUndefinedKey;
 
 // TODO: verify that this does not leak memory by keeping arbitrary arrays around indefinitely.
 - (void)addSetCompletion:(PrestoCallback)success failure:(PrestoCallback)failure {
-	NSArray *arrayTarget = (NSArray *)self.target;
+	NSArray *arrayTarget = (NSArray *)self.target; // should this be __block??
+	
 	// there might be a better way to do this
 	// if this object has its own source/definition, treat it like a normal Presto object
 	// this method is for subscribing to multiple dependencies at once for a completion or group dependency.
@@ -2070,7 +2074,19 @@ static id ValueForUndefinedKey;
 }
 
 - (void)addSetDependency:(PrestoCallback)dependency withTarget:(id)target {
-	@throw @"implement";
+	// TODO: is this really all we have to do here?
+	for ( NSObject *elem in self.target ) {
+		[elem.presto onChange:dependency withTarget:target];
+	}
+}
+
+ // we definitely need a better way to do this
+- (PrestoMetadata *)clearDependencies {
+	for ( PrestoCallbackRecord *callback in [self.callbacks copy] ) {
+		if ( [callback isKindOfClass:[PrestoDependencyRecord class]] )
+			[self.callbacks removeObject:callback];
+	}
+	return self;
 }
 
 // abstract this to addCompletionForSource or something internally so we can reuse it

@@ -246,11 +246,14 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 //- (void)loadWithCompletion:(PrestoCallback)completion force:(BOOL)force;
 
 /**
-	Experimental. The idea here is you can call `loadWith` on an existing instance to load it in place with the result of some other remote source such as a PUT or POST, rather than replacing it with a new instance.
+	Experimental. The idea here is you can call `loadWithObject` on an existing instance to load it in place with the result of some other remote source such as a PUT or POST, rather than replacing it with a new instance.
 */
-- (PrestoMetadata *)loadWith:(NSObject *)object;
+- (PrestoMetadata *)loadWithObject:(NSObject *)object;
 - (PrestoMetadata *)appendFrom:(NSObject *)source;
 
+/**
+	Tells an object not to load itself automatically, even if completions or dependencies are attached. You must explicitly call `reload` when you are ready for the object to be loaded.
+*/
 - (PrestoMetadata *)deferLoad;
 - (PrestoMetadata *)invalidate;
 - (PrestoMetadata *)signalChange; // experimental--calls dependency blocks manually
@@ -332,6 +335,9 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 // TODO: consider changing "withTarget" to "withViewController" since that's really its intended purpose
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency;
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target;
+
+- (PrestoMetadata *)clearDependencies; // TODO: we need a better way to identify dependencies so individual ones can be removed
+// i actually wonder if we should use a target/selector pattern instead…
 
 - (void)uninstall; // uninstalls the current metadata object from its host
 
