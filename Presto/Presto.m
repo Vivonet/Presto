@@ -430,7 +430,12 @@ static id ValueForUndefinedKey;
 	PrestoSource *source = [PrestoSource new];
 	source.url = url;
 	source.method = method ?: @"GET";
-	source.payload = payload;
+	
+	if (payload && [payload isKindOfClass:[NSString class]])
+		source.payloadData = [((NSString *)payload) dataUsingEncoding:NSUTF8StringEncoding];
+	else
+		source.payload = payload;
+	
 	return source;
 }
 
