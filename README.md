@@ -1,11 +1,8 @@
-# Presto!
-A non-intrusive Objective-C REST framework that just works like magic!
-
-♫ “If I could wave my magic wand…” ♫
-https://youtu.be/iwIdXJPXpMU
+# pRESTo
+A declarative REST framework that allows for the transparent in-place loading of native objects from a remote JSON source.
 
 ## What is Presto?
-Presto is an iOS REST bridge that eliminates much of the tedium of communicating with a remote REST source in a way that is immediately intuitive to developers, without actually abstracting or obfuscating the REST interface itself like some other frameworks attempt. Presto simply reduces the time and steps needed to do what you already want to do, removing the mundane and time-wasting work of handling things like communication, serialization and change handling, and ties your remotely hosted JSON data directly to native objects via the Objective-C runtime. Presto is designed to non-intrusively tie itself into your existing data model and can automatically load your existing class objects with data from a remote source with minimal setup and a very easy learning curve.
+Presto is an iOS REST bridge written in Objective-C (but also supports Swift as long as your classes conform to NSObject) that eliminates much of the tedium of integrating with a REST API in a way that is immediately intuitive to developers and without abstracting or obfuscating the stuff you care about. Presto simply reduces the time and number of steps needed to do what you already want to do, removing the mundane and time-wasting work of handling things like communication, serialization, updating and change handling, and binds your native objects directly to remotely hosted JSON data via the Objective-C runtime. Declarative `onComplete`/`onChange` blocks give you a means to react immediately to remote changes as soon as they are detected. You're in complete control of when objects are reloaded, but a simple timer-based polling mechanism is built-in for convenience.
 
 For example, loading an object with a remote JSON definition is as simple as this:
 
@@ -16,16 +13,18 @@ For example, loading an object with a remote JSON definition is as simple as thi
 	@property (strong, nonatomic) int age;
 	
 	@end
-	…
+	
+	...
+	
 	self.profile = [MyProfile new];
 	[self.profile getFromURL:url];
 
 That's it! Provided your remote document looks something like this:
 
 	{
-		"name":"Logan",
-		"email":"logan@example.com",
-		"age":33,
+		"name": "Logan",
+		"email": "logan@example.com",
+		"age": 33,
 	}
 
 You can now attach completions and/or dependencies to self.profile and access the loaded properties from within the attached block. Presto uses blocks to decouple the asynchronous loading of a property from its use. You should always access remotely-defined properties from within a completion or dependency block, but they're simple to use and you can add as many of these as you want! Here's an example of a dependency:
@@ -41,13 +40,13 @@ _(Important note: When using dependencies that reference `self`, because of the 
 
 This block will be called whenever self.profile is reloaded from its remote source (but only if there are actually changes), allowing your user interface to automatically keep itself up to date with remote changes.
 
-Note that MyProfile inherits from NSObject, not some Presto class. With Presto you can load objects of *any* class (even ones you don’t control), not just those that derive from a specific base class.
+Note that MyProfile inherits from NSObject, not some Presto base class. Thanks to the Objective-C runtime, with Presto you can load *any* NSObject-derived objects (even of classes you don’t control), not just those that derive from a specific base class.
 
-Presto’s aim is to make loading and manipulating remote data as simple as possible and does so by interacting with the Objective-C runtime to dynamically match server-side JSON attributes to client-side Objective-C properties.
+Presto’s aim is to make loading and manipulating remote data as simple as possible, while still giving you complete control to step in at any point and change its behavior.
 
-Presto is also very fault-tolerant. If the library encounters a property or attribute it does not recognize, or a situation it doesn’t know how to handle, it will print a warning to the console, but otherwise continue without cause for alarm. This means your client and server side model don’t need to match exactly, nor do either of them need to be exhaustively defined. If your server returns information your client doesn’t need, you can safely just ignore it.
+Presto is also very fault-tolerant by default. If the library encounters a property or attribute it does not recognize, or a situation it doesn’t know how to handle, it will print a warning to the console, but otherwise continue without cause for alarm. This means your client and server side data model don’t need to match property-for-property. If your server returns information your client doesn’t need, you can safely just ignore it, and responses can also contain only partial information that can be filled-in later from a future request. In-place loading means only those fields actually returned in the payload will be updated.
 
-Presto is a work in progress and is not yet in a state where it can be considered complete enough to handle all scenarios, but it is already quite capable enough to handle a large majority of requests. My hope is that as it develops, it will become more and more general purpose. In the meantime, if you see a feature or ability lacking in Presto that you would like to see implemented, please shoot me a line or open an issue for it. Or of course you can implement it yourself. I’ve tried to keep the code as simple and straightforward as possible to facilitate modifications.
+Presto is a work in progress and is not yet in a state where it can be considered complete enough to handle all scenarios, but it is already quite capable enough to handle a large majority of requests and is already being used in production software. My hope is that as it develops, it will become more and more general purpose. In the meantime, if you see a feature or ability lacking in Presto that you would like to see implemented, please shoot me a line or open an issue for it. Or of course you can implement it yourself. I’ve tried to keep the code as simple and straightforward as possible to facilitate modifications.
 
 Presto has a few core strengths and design goals:
 
@@ -58,10 +57,10 @@ Presto has a few core strengths and design goals:
 0. In-place loading means you can refresh your objects from their server definitions without blowing away other local data. Working on a single instance of an object means more predictable behavior and compatibility with a wide range of existing designs.
 
 ## Disclaimer
-This project is in its infancy and is constantly changing. Expect breaking changes. You’re more than welcome to depend on Presto in your projects, but for now you should link against a specific build and be aware that updating Presto may break your existing code. I will try to keep a changelog of all breaking changes introduced from version to version to facilitate new version adoption.
+This project was created primarily for my own personal use and as such may change to accommodate new features I require of it. Expect breaking changes. You’re more than welcome to depend on Presto in your projects, but for now you should link against a specific build and be aware that updating Presto may break your existing code. I will try to keep a changelog of all breaking changes introduced from version to version to facilitate new version adoption.
 
 ## Installation
-Presto is contained for the most part in a single pair of files: Presto.h/m. There is also a handy (but optional) NSObject+Presto.h/m category which exposes Presto methods on NSObject. This category is designed to allow for easy customization and selection of the methods that suit your project. You can expose as many or as few of these category methods as you like.
+Presto is contained for the most part in a single pair of files: Presto.h/m. There is also a handy (but optional) NSObject+Presto.h/m category which exposes Presto methods on NSObject. This category is designed to allow for easy customization and selection of the methods that suit your project. You can expose as many or as few of these category methods as you like. If you encounter compiler conflicts when including NSObject+Presto.h, just comment-out (or rename) the offending declarations in that file.
 
 To install Presto, just copy Presto.h/m into your project and import it where necessary. It is recommended that you #import the optional NSObject+Presto.h in your project’s precompiled header (.pch) file to make accessing Presto on any object automatic from anywhere in your project.
 
@@ -156,11 +155,9 @@ Remember, you can attach as many completions and dependencies to objects as you 
 As with regular dependencies, you should use a weakSelf pattern in your set dependency blocks.
 
 ## What Doesn’t Presto Do?
-As I've mentioned, Presto is still in its infancy. There are still some features and abilities that are planned or being considered that are not yet part of the framework. One such obvious omission is that of converters. There is no layer of conversion happening between a payload and your local properties.
+As I've mentioned, Presto is still in its infancy. There are still some features and abilities that are planned or being considered that are not yet part of the framework. One such obvious omission is converters. There is no layer of conversion happening between a payload and your local properties.
 
-For example, if your payload represents a date as a string or long, you'll need to convert these manually for now. The best place to do this is by adding a second local property of the desired type (e.g. NSDate) and adding a setter (or overriding setValue:forKey:) in your model class to set the converted value of the date property whenever the original property is set.
-
-This is definitely one area I plan on improving soon, so hopefully we won't be stuck doing this for too much longer.
+For example, if your payload represents a date as a string or long, you'll need to convert these manually for now. The best place to do this is by adding a second local property of the desired type (e.g. NSDate) and adding a setter (or overriding setValue:forKey:) in your model class to set the converted value of the date property whenever the original property is set. Treat the original property as the source of truth and you should be fine.
 
 * * *
 
