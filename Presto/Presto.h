@@ -1,6 +1,6 @@
 //  The MIT License (MIT)
 //
-//  Copyright © 2015 Vivonet
+//  Copyright © 2018 Logan Murray
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
 //  of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,7 @@
 //  An Objective-C REST Framework
 //  Designed and implemented by Logan Murray
 //  
-//  https://github.com/Vivonet/Presto
+//  https://github.com/devios1/presto
 
 #import <Foundation/Foundation.h>
 
@@ -37,10 +37,10 @@
 @class PrestoSource;
 @class PrestoMetadata;
 
-typedef void (^PrestoCallback)( NSObject *result );
+typedef void (^PrestoCallback)(NSObject *result);
 // we should consider adding PrestoFailureCallback which also passes an NSError *error
-typedef void (^PrestoRequestTransformer)( NSMutableURLRequest *request );
-typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON object (NSArray* or NSDictionary*)
+typedef void (^PrestoRequestTransformer)(NSMutableURLRequest *request); // rename Transformation?
+typedef id (^PrestoResponseTransformer)(id response); // sent the decoded JSON object (NSArray* or NSDictionary*)
 
 // these are empty protocols that allow us to attribute properties with meta information
 // note that protocols can only be attached to object types, so you should declare your property as NSNumber if you need to attach a protocol to a numerical or boolean type.
@@ -89,12 +89,12 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 	
 	This is effectively equivalent to just instantiating the class normally except that the PrestoMetadata instance is also created immediately at this time. It is included mainly for syntactic symmetry.
 */
-+ (id)objectOfClass:(Class)class;
+//+ (id)objectOfClass:(Class)class; **deprecated**
 
 /**
 	Instantiates an empty typed `NSMutableArray` instance. Similar to simply instantiating an `NSMutableArray` directly, except that the array knows what class of object it contains. This is important for arrays that are to be loaded remotely from a subsequent Presto call.
 */
-+ (id)arrayOfClass:(Class)class;
+//+ (id)arrayOfClass:(Class)class; **deprecated**
 
 // these are duplicated here for convenience and apply to [Presto defaultInstance]
 + (void)globallyMapRemoteField:(NSString *)field toLocalProperty:(NSString *)property;
@@ -196,6 +196,12 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 //@property (strong, nonatomic) NSMutableArray* serializationKeys; // this is a temp hack to get around knowing what properties to serialize; this will be improved!
 @property (nonatomic) BOOL active; // allows a source to be turned on/off
 
+// experimental:
+//@property (strong, nonatomic) Class nativeClass;	// the native class to use at the given depth in a successful response
+//@property (nonatomic) int classDepth;							// the depth of the tree at which targetClass takes over from NSArray/NSDictionary
+//@property (strong, nonatomic) Class errorClass;		// the class of object to instantiate as the response if the request fails (returns non-200)
+//@property (nonatomic) int errorDepth;
+
 @property (strong, nonatomic) NSMutableArray *requestTransformers;
 @property (strong, nonatomic) NSMutableArray *responseTransformers;
 
@@ -210,8 +216,12 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 // TODO: we may actually want to support multiple targets to allow the same metadata to be shared by several objects (for example if two metadatas are merged)
 @property (readonly, nonatomic) id target;			// the object that this metadata applies to (rename host?)
 @property (weak, nonatomic) NSObject *parent; // a weak reference to the object that contains this object
-@property (strong, nonatomic) Class targetClass;
+//@property (strong, nonatomic) Class targetClass;	// the class of the target/host **deprecated**
+@property (strong, nonatomic) Class nativeClass;	// the native class to use at the given depth in a successful response
+@property (nonatomic) int classDepth;							// the depth of the tree at which targetClass takes over from NSArray/NSDictionary
 @property (strong, nonatomic) Class errorClass;		// the class of object to instantiate as the response if the request fails (returns non-200)
+@property (nonatomic) int errorDepth;
+
 @property (strong, nonatomic) Presto *manager;		// the manager this object should use (rename context?)
 // TODO: i think we should deprecate multiple sources for simplicity and reverse updating etc.
 //@property (readonly, nonatomic) NSMutableSet *sources;			// keyed on propertyName or NSNull
@@ -233,8 +243,8 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 @property (readonly, nonatomic) id lastResponseObject;
 
 // array-related properties (these only apply if target is NSMutableArray)
-@property (strong, nonatomic) Class arrayClass;		// the class of elements if target is a mutable array
-@property (nonatomic) BOOL append; // only applies to arrays; when YES, new elements are appended to the target array and existing elements are not removed
+//@property (strong, nonatomic) Class arrayClass;		// the class of elements if target is a mutable array **deprecated**
+@property (nonatomic) BOOL append; // only applies to arrays; when YES, new elements are appended to the target array and existing elements are not removed (TODO: this should probably also apply to dictionaries)
 @property (strong, nonatomic) NSString *sortKey; // experimental--automatically sort an array based on some key (it would be nice if this could also be set up with a protocol)
 
 - (PrestoMetadata *)reload; // replace with getSelf?
@@ -301,9 +311,10 @@ typedef id (^PrestoResponseTransformer)( id response ); // sent the decoded JSON
 - (BOOL)loadWithDictionary:(NSDictionary *)dictionary;
 - (BOOL)loadWithArray:(NSArray *)array;
 
-- (id)objectOfClass:(Class)class;
-- (id)arrayOfClass:(Class)class; // this is id to avoid type warnings
-- (PrestoMetadata *)withErrorClass:(Class)class;
+//- (id)objectOfClass:(Class)class; **deprecated**
+//- (id)arrayOfClass:(Class)class; **deprecated** // this is id to avoid type warnings
+- (PrestoMetadata *)withClass:(Class)class atDepth:(int)depth;
+- (PrestoMetadata *)withErrorClass:(Class)class atDepth:(int)depth; // NOTE: depth is not supported on this call yet
 
 - (NSString *)toJSONString;
 - (NSString *)toJSONStringWithTemplate:(id)template;
