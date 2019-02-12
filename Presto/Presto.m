@@ -28,9 +28,7 @@
 //  An Objective-C REST Framework
 //  Designed and implemented by Logan Murray
 //  
-//  https://github.com/devios1/presto
-
-//  I apologize for the current state of this file. There is a lot of commented out crap left over from previous design iterations. It will definitely be cleaned up ...eventually.
+//  https://github.com/devios1/Presto
 
 #import <objc/runtime.h>
 #import <UIKit/UIKit.h>
@@ -49,13 +47,6 @@ static id ValueForUndefinedKey;
 #define PRLog(FORMAT, ...) printf("%s\n", [[NSString stringWithFormat:FORMAT, ##__VA_ARGS__] UTF8String]);
 
 #pragma mark - Presto
-
-// these are here only to define the selectors
-@protocol PrestoSelectors
-
-//- (NSObject *)resolveInstance:(NSObject *)instance;
-
-@end
 
 @interface Presto ()
 
@@ -87,16 +78,6 @@ static id ValueForUndefinedKey;
 + (Class)defaultErrorClass {
 	return [Presto defaultInstance].defaultErrorClass;
 }
-
-// **deprecated**
-// this method actually amounts to little more than simply instantiating the object yourself, it's really only here for symmetry...
-//+ (id)objectOfClass:(Class)class {
-//	return [[PrestoMetadata new] objectOfClass:class];
-//}
-//
-//+ (id)arrayOfClass:(Class)class {
-//	return [[PrestoMetadata new] arrayOfClass:class];
-//}
 
 // the following are convenience proxies to [Presto defaultInstance]
 + (void)globallyMapRemoteField:(NSString *)field toLocalProperty:(NSString *)property {
@@ -182,6 +163,7 @@ static id ValueForUndefinedKey;
 		
 		self.trackParentObjects = YES;
 		self.showActivityIndicator = YES;
+		self.ignoreNulls = YES;
 	}
 	return self;
 }
@@ -264,9 +246,6 @@ static id ValueForUndefinedKey;
 		} else
 			[self registerInstance:result];
 	}
-	// deprecated:
-//	if ([class respondsToSelector:@selector(resolveInstance:)])
-//		result = [class performSelector:@selector(resolveInstance:) withObject:result];
 	
 	return result;
 }
@@ -291,12 +270,10 @@ static id ValueForUndefinedKey;
 
 #pragma mark -
 
-// TODO: we might want to lock this, but it's currently only called on the main thread anyway
 - (void)setActiveRequests:(NSInteger)activeRequests {
 	_activeRequests = activeRequests;
 	
 	if (self.showActivityIndicator) {
-		//DispatchQueue.main.async {
 		dispatch_async(dispatch_get_main_queue(), ^{
 			[UIApplication sharedApplication].networkActivityIndicatorVisible = self.activeRequests > 0;
 		});
@@ -333,20 +310,6 @@ static id ValueForUndefinedKey;
 	}
 	[(NSMutableDictionary *)self.propertyToFieldMappings[class] setObject:field forKey:property];
 }
-
-//- (void)addRequestTransformer:(PrestoRequestTransformer)transformer forClass:(Class)class {
-//	if (self.requestTransformers[class] == nil) {
-//		[(NSMutableDictionary *)_requestTransformers setObject:[NSMutableArray new] forKey:(id<NSCopying>)class];
-//	}
-//	[(NSMutableArray *)_requestTransformers[class] addObject:transformer];
-//}
-//
-//- (void)addResponseTransformer:(PrestoResponseTransformer)transformer forClass:(Class)class {
-//	if (self.responseTransformers[class] == nil) {
-//		[(NSMutableDictionary *)_responseTransformers setObject:[NSMutableArray new] forKey:(id<NSCopying>)class];
-//	}
-//	[(NSMutableArray *)_responseTransformers[class] addObject:transformer];
-//}
 
 - (void)addSerializationKey:(NSString *)key forClass:(Class)class {
 	if (self.serializationKeys[class] == nil) {
@@ -386,47 +349,14 @@ static id ValueForUndefinedKey;
 	return fieldName ?: propertyName;
 }
 
-//- (void)transformRequest:(NSMutableURLRequest *)request {
-//
-//}
-//
-//- (id)transformResponse:(id)jsonObject {
-//	for (PrestoResponseTransformer transformer in self.responseTransformers)
-//		jsonObject = transformer(jsonObject);
-//	
-//	return jsonObject;
-//}
-
-//- (void)transformRequest:(NSMutableURLRequest *)request forClass:(Class)class {
-//	while (class != nil) {
-//		NSArray *transformers = self.requestTransformers[class];
-//		for (PrestoRequestTransformer transformer in transformers)
-//			transformer(request);
-//		class = [class superclass];
-//	}
-//}
-//
-//- (id)transformResponse:(id)jsonObject forClass:(Class)class {
-//	while (class != nil) {
-//		NSArray *transformers = self.responseTransformers[class];
-//		for (PrestoResponseTransformer transformer in transformers) {
-//			jsonObject = transformer(jsonObject); // make sure these don't return nil! (maybe safety that? redesign?)
-//			NSAssert(jsonObject != nil, @"Transformer neglected to return the dictionary.");
-//		}
-//		// should we break? does it make sense to keep going?
-//		class = [class superclass];
-//	}
-//	return jsonObject;
-//}
-
 - (BOOL)shouldPropertyBeSerialized:(NSString *)propertyName forClass:(Class)class {
-	NSArray* ignoreKeys = @[@"superclass", @"hash", @"debugDescription"];
+	NSArray* ignoreKeys = @[@"superclass", @"hash", @"debugDescription"]; // never serialize these
+	
 	if ([ignoreKeys containsObject:propertyName])
 		return NO;
-//	if ([propertyName isEqualToString:@"superclass"]
-//		|| [propertyName isEqualToString:@"debugDescription"]) // never serialize these
-//		return NO;
+	
 	NSMutableSet *serializationKeys = self.serializationKeys[class];
+	
 	if (!serializationKeys || [serializationKeys containsObject:propertyName])
 		return YES;
 	else
@@ -449,19 +379,11 @@ static id ValueForUndefinedKey;
 	}
 }
 
-//- (NSString *)stringForJSONType:(Class)jsonClass {
-//	if (jsonClass ==
-//}
-
 @end
 
 #pragma mark - PrestoCallbackRecord
 
 @implementation PrestoCallbackRecord
-
-//- (BOOL)isCompletion {
-//	return self.strongTarget != nil;
-//}
 
 @end
 
@@ -477,13 +399,13 @@ static id ValueForUndefinedKey;
 
 @implementation PrestoSource
 
-// this stuff is old; deprecate it; in fact deprecate all of prestosource
-
-//+ (instancetype)sourceWithURL:(NSURL *)url {
-//	return [self sourceWithURL:url method:nil payload:nil requestTransformer:nil responseTransformer:nil];
-//}
-
 + (instancetype)sourceWithURL:(NSURL *)url method:(NSString *)method payload:(id)payload {
+	if (!url) {
+		if (LOG_ERRORS)
+			PRLog(@"Presto Error: No URL supplied for source.");
+		return nil;
+	}
+	
 	PrestoSource *source = [PrestoSource new];
 	source.url = url;
 	source.method = method ?: @"GET";
@@ -495,24 +417,6 @@ static id ValueForUndefinedKey;
 	
 	return source;
 }
-
-//+ (instancetype)sourceWithURL:(NSURL *)url requestTransformer:(PrestoRequestTransformer)requestTransformer responseTransformer:(PrestoResponseTransformer)responseTransformer {
-//	return [self sourceWithURL:url method:nil payload:nil requestTransformer:requestTransformer responseTransformer:responseTransformer];
-//}
-//
-//+ (instancetype)sourceWithURL:(NSURL *)url method:(NSString *)method payload:(id)payload requestTransformer:(PrestoRequestTransformer)requestTransformer responseTransformer:(PrestoResponseTransformer)responseTransformer {
-//	PrestoSource *source = [PrestoSource new];
-//	source.url = url;
-//	source.method = method;
-//	source.payload = payload;
-//	if (requestTransformer)
-//		[source.requestTransformers addObject:requestTransformer];
-//	if (responseTransformer)
-//		[source.responseTransformers addObject:responseTransformer];
-//	return source;
-//}
-//
-//#pragma mark -
 
 - (instancetype)init {
 	self = [super init];
@@ -536,11 +440,8 @@ static id ValueForUndefinedKey;
 
 - (void)setIsLoading:(BOOL)isLoading {
 	if (isLoading) {
-//		NSDate* previousLoading = _loadingTime;
 		_loadingTime = [NSDate date];
-//		PRLog(@"****** setting isLoading from %f to %f for %@", [previousLoading timeIntervalSinceReferenceDate], [_loadingTime timeIntervalSinceReferenceDate], self);
 	} else {
-//		PRLog(@"***** setting isLoading to nil for %@", self);
 		_loadingTime = nil;
 	}
 }
@@ -648,108 +549,33 @@ static id ValueForUndefinedKey;
 #pragma mark - Properties
 
 - (id)target {
-	// TODO: if no target, create using known type information
-	// either an instance of an object class, json nsarray/nsdictionary,
-	// or an array of a specific class
-	
-	// TODO: we also need to make sure any references to "target" in this class do so knowing that an instance could be created, and checking weakTarget otherwise
-
 	__strong id strongTarget = self.weakTarget;
-	
-	// **deprecated** targets will no longer create themselves--just instantiate them beforehand
-//	if (!strongTarget) {
-//		if (self.targetClass)
-//			strongTarget = [[self.targetClass alloc] init];
-//		else if (self.source.lastPayload && self.source.lastPayload.length > 0 && [[[NSString alloc] initWithData:self.source.lastPayload encoding:NSUTF8StringEncoding] characterAtIndex:0] == '[')
-//			strongTarget = [[NSMutableArray alloc] init];
-//		else
-//			strongTarget = [[NSMutableDictionary alloc] init];
-//
-//		if (LOG_VERBOSE)
-//			PRLog(@"Target not found; creating a new %@: %x", self.targetClass, (uint)strongTarget);
-//
-//		objc_setAssociatedObject(strongTarget, @selector(presto), self, OBJC_ASSOCIATION_RETAIN_NONATOMIC); // install ourself onto the target
-//		self.weakTarget = strongTarget;
-//
-//		for (PrestoCallbackRecord* callback in self.callbacks) {
-//			if ([callback isKindOfClass:[PrestoCompletionRecord class]])
-//				((PrestoCompletionRecord *)callback).target = strongTarget;
-//		}
-//
-////		for (PrestoCallbackRecord* dependency in self.dependencies)
-////			dependency.weakTarget = strongTarget;
-//
-//		[self loadResponse]; // loads it if there is a payload waiting
-//	}
 	
 	return strongTarget;
 }
 
 - (Class)targetClass {
-	__strong id strongTarget = self.weakTarget;
-	
-//	if (strongTarget)
-		return [strongTarget class];
-//	else
-//		return _targetClass;
-}
-
-- (Class)errorClass {
-	return self.errorClass ?: self.manager.defaultErrorClass;
+		return [self.target class];
 }
 
 - (BOOL)isLoading {
 	return self.source.isLoading;
-//	for (PrestoSource* source in self.sources) {
-//		if (source.loadingTime != nil)
-//			return YES;
-//	}
-//	
-//	return NO;
 }
 
 - (BOOL)isLoaded {
 	return !self.source || self.source.isLoaded;
-//	if (self.sources.count == 0)
-//		return NO; // we don't consider an object with no source to be loaded
-	
-//	for (PrestoSource* source in self.sources) {
-//		if (source.loadedTime == nil)
-//			return NO;
-//	}
-//	
-//	return YES;
 }
 
 - (BOOL)isCompleted {
 	return !self.source || self.source.isCompleted;
-//	if (self.sources.count == 0)
-//		return NO;
-	
-//	for (PrestoSource *source in self.sources) {
-//		if (!source.isCompleted)
-//			return NO;
-//	}
-//	
-//	return YES;
 }
 
 - (BOOL)loadingSince:(NSDate *)date {
 	return self.source.isLoading && [self.source.loadingTime compare:date] == NSOrderedAscending;
-//	for (PrestoSource *source in self.sources) {
-//		
-//			return YES;
-//	}
-//	return NO;
 }
 
 - (NSError *)error {
 	return self.source.error;
-//	for (PrestoSource* source in self.sources) {
-//		if (source.error || (source.statusCode != 200 && source.statusCode != 0))
-//			return source.error ?: [NSError new]; // create error for status code?
-//	}
-//	return nil;
 }
 
 - (id)errorResponse {
@@ -775,28 +601,7 @@ static id ValueForUndefinedKey;
 
 - (void)setRefreshInterval:(NSTimeInterval)refreshInterval {
 	self.source.refreshInterval = refreshInterval;
-//	for (PrestoSource *source in self.sources) {
-//		source.refreshInterval = refreshInterval;
-//	}
 }
-
-//- (void)setArrayClass:(Class)arrayClass {
-//	_arrayClass = arrayClass;
-//	if (arrayClass)
-//		self.targetClass = [NSMutableArray class];
-//}
-
-//- (NSMutableArray *)completions {
-//	if (_completions == nil)
-//		_completions = [NSMutableArray new];
-//	return _completions;
-//}
-//
-//- (NSMutableArray *)dependencies {
-//	if (_dependencies == nil)
-//		_dependencies = [NSMutableArray new];
-//	return _dependencies;
-//}
 
 - (NSMutableArray *)callbacks {
 	if (_callbacks == nil)
@@ -813,126 +618,12 @@ static id ValueForUndefinedKey;
 
 - (id)lastResponseObject {
 	if (self.source.lastPayload)
-		return [NSJSONSerialization JSONObjectWithData:self.source.lastPayload options:NSJSONReadingMutableContainers error:nil];
+		return [NSJSONSerialization JSONObjectWithData:self.source.lastPayload options:NSJSONReadingMutableContainers error:nil] ?: [[NSString alloc] initWithData:self.source.lastPayload encoding:NSUTF8StringEncoding];
 	else
 		return nil;
 }
 
-//- (void)setIsLoading:(BOOL)isLoading {
-//	if (isLoading) {
-//		_loadingTime = [NSDate date];
-////		PRLog(@"Setting %@ to LOADING at %f", [self description], [_loadingTime timeIntervalSinceReferenceDate]);
-//	} else
-//		_loadingTime = nil;
-//}
-//
-//- (void)setIsLoaded:(BOOL)isLoaded {
-//	if (isLoaded) {
-//		_loadedTime = [NSDate date];
-//		if ([self.target respondsToSelector:@selector(objectLoaded)])
-//			[self.target objectLoaded];
-//	} else
-//		_loadedTime = nil;
-//}
-
-//- (void)setIdentity:(NSURL *)identity {
-//	[self setIdentity:identity load:NO]; // default is not to immediately load (use loadFromURL: for that)
-//}
-//
-//- (void)setIdentity:(NSURL *)identity load:(BOOL)load {
-//	if (![self.identity isEqual:identity]) {
-//		_identity = identity;
-//		self.isLoaded = NO; // reset because we changed its identity
-//	}
-//	
-//	if (load)
-//		[self reload:YES]; // force a reload (ok?)
-//}
-
-//- (void)setError:(NSError *)error {
-//	BOOL newError = YES;// error.code != self.error.code; // i don't think this is reliable yet
-//	_error = error;
-//	
-//	if (LOG_ERRORS && self.error || self.statusCode != 200)
-//	
-////	if (self.error && self.callbacks.count)
-//	if (self.error || (self.statusCode != 200 && self.statusCode != 0)) { // status code of 0 means it hasn't been loaded via a URL request
-//		if (LOG_ERRORS)
-//			PRLog(@"*** Error %d loading object %@:\n%@", (int)self.statusCode, self.target, self.error);
-//		
-//		[self callFailureBlocks:newError];
-//	}
-//}
-
 #pragma mark -
-
-//- (PrestoSource *)addSource:(NSURL *)url {
-//	return [self addSource:url withMethod:nil object:nil requestTransformer:nil responseTransformer:nil];
-//}
-//
-//- (PrestoSource *)addSource:(NSURL *)url withMethod:(NSString *)method object:(id)object requestTransformer:(PrestoRequestTransformer)requestTransformer responseTransformer:(PrestoResponseTransformer)responseTransformer {
-//	// TODO: we really ought to make sources a unique set; seems URLs are distinct even if they have the same value??
-//	// for now just delete any previous source with the same url
-//	PrestoSource* source = [PrestoSource new];
-//	source.target = self;
-//	source.url = url;
-//	source.httpMethod = method ?: @"GET";
-//	source.parameterObject = object;
-//	if (requestTransformer)
-//		[source.requestTransformers addObject:requestTransformer];
-//	if (responseTransformer)
-//		[source.responseTransformers addObject:responseTransformer];
-//	[self.sources addObject:source];
-//	return source;
-//}
-//
-//- (PrestoSource *)setSource:(NSURL *)url {
-//	return [self setSource:url withMethod:nil object:nil];
-//}
-//
-//- (PrestoSource *)setSource:(NSURL *)url withMethod:(NSString *)method object:(id)object {
-//}
-
-//- (PrestoSource *)addSource:(PrestoSource *)source {
-//	source.target = self;
-//	self.source = source;
-////	for (PrestoSource *existingSource in [self.sources copy]) {
-////		if ([existingSource.url.absoluteString isEqualToString:source.url.absoluteString]) {
-////			[self.sources removeObject:existingSource];
-//////			break;
-////		}
-////	}
-////	[self.sources addObject:source];
-//	return source;
-//}
-//
-//- (PrestoMetadata *)setSource:(PrestoSource *)source {
-//	[self.sources removeAllObjects];
-//	[self addSource:source];
-//	return self;
-//}
-
-//- (PrestoSource *)addURL:(NSURL *)url {
-//	PrestoSource *source = [PrestoSource sourceWithURL:url];
-//	[self addSource:source];
-//	return source;
-//}
-
-// deprecate and clean this up
-//- (PrestoMetadata *)setURL:(NSURL *)url {
-////	for (PrestoSource *source in self.sources) {
-////		source.target = nil; // invalidates the source
-////	}
-////	[self.sources removeAllObjects];
-//	[self addSource:[PrestoSource sourceWithURL:url]];
-//	return self;
-//}
-
-// these are temp until i deprecate PrestoSource
-//- (PrestoMetadata *)withMethod:(NSString *)method {
-//	[self.source withMethod:method];
-//	return self;
-//}
 
 - (PrestoMetadata *)withPayload:(id)payload {
 	self.source.payload = payload;
@@ -966,11 +657,6 @@ static id ValueForUndefinedKey;
 }
 
 - (PrestoMetadata *)withTemplate:(NSString *)jsonTemplate {
-//	if (![template isKindOfClass:[NSDictionary class]] && ![template isKindOfClass:[NSArray class]]) {
-//		if (LOG_ERRORS)
-//			PRLog(@"pRESTo Error: Object passed to withTemplate: must be an NSArray or NSDictionary. The current value with be ignored.");
-//		return self;
-//	}
 	self.source.serializationTemplate = [NSJSONSerialization JSONObjectWithData:[jsonTemplate dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
 	// TODO: add error handling
 	return self;
@@ -978,61 +664,13 @@ static id ValueForUndefinedKey;
 
 #pragma mark -
 
-//- (void)loadFromURL:(NSURL *)url {
-////	PrestoSource *source = [self addSource:url];
-////	[self loadFromSource:source force:YES];
-////	return source;
-////	return [self loadFromURL:url withMethod:nil object:nil requestTransformer:nil responseTransformer:nil];
-////	[self setURL:url];
-////	self.source = [PrestoSource sourceWithURL:url];
-//	[self loadFromURL:url onComplete:nil];
-//}
-//
-//- (void)loadFromURL:(NSURL *)url onComplete:(PrestoCallback)completion {
-////	[self setURL:url];
-////	self.source = [PrestoSource sourceWithURL:url];
-//	[self getFromURL:url];
-//	[self load];
-//	if (completion)
-//		[self onComplete:completion];
-//}
-
-//- (PrestoMetadata *)loadFromURL:(NSURL *)url withMethod:(NSString *)method object:(id)object {
-//	return [self loadFromURL:url withMethod:method object:object requestTransformer:nil responseTransformer:nil];
-//}
-
-//- (PrestoSource *)loadFromURL:(NSURL *)url withRequestTransformer:(PrestoRequestTransformer)requestTransformer responseTransformer:(PrestoResponseTransformer)responseTransformer {
-//	return [self loadFromURL:url withMethod:nil object:nil requestTransformer:requestTransformer responseTransformer:responseTransformer];
-//}
-
-//- (PrestoSource *)loadFromURL:(NSURL *)url withMethod:(NSString *)method object:(id)object requestTransformer:(PrestoRequestTransformer)requestTransformer responseTransformer:(PrestoResponseTransformer)responseTransformer {
-////	PrestoSource *source = [self addSource:url withMethod:method object:object requestTransformer:requestTransformer responseTransformer:responseTransformer];
-//	[self loadFromSource:[PrestoSource sourceWithURL:url method:method object:object requestTransformer:requestTransformer responseTransformer:responseTransformer] force:YES];
-//	return self;
-//}
-
-// this is currently very limited as it doesn't quite fit in with the overall design
-// we need to unify this with the object loading
-//- (void)loadProperty:(NSString *)propertyName fromURL:(NSURL *)url {
-//	[self.sources removeObjectForKey:propertyName];
-//	
-//	PrestoSource *source = [PrestoSource new];
-//	source.url = url;
-//	source.targetProperty = propertyName;
-////	source.callback = callback;
-//	// anything else??
-//	self.sources[propertyName] = source;
-//	[self loadFromSource:source force:YES];
-//}
-
-// should we perhaps differentiate between reload (GET) and resend (PUT/POST/DELETE)?
+// TODO: differentiate between reload (GET) and resend (PUT/POST/DELETE)?
 - (PrestoMetadata *)reload {
-//	[self loadWithCompletion:nil force:NO];
 	return [self reload:NO];
 }
 
 - (PrestoMetadata *)reload:(BOOL)force {
-	[self loadFromSource:force];
+	[self load:force];
 	return self;
 }
 
@@ -1045,50 +683,11 @@ static id ValueForUndefinedKey;
 
 - (PrestoMetadata *)reloadWithCompletion:(PrestoCallback)completion {
 	return [[self reload] onComplete:completion];
-//	[self load];
-//	// we should probably record the timestamp above before we load
-//	[self onComplete:completion];
-//	return self;
 }
 
 - (PrestoMetadata *)reloadWithCompletion:(PrestoCallback)success failure:(PrestoCallback)failure {
 	return [[self reload] onComplete:success failure:failure];
-//	return self;
 }
-
-// TODO: find somewhere better for this
-//- (void)testConnection {
-//	Reachability* reachability = [Reachability reachabilityForInternetConnection];
-////	PRLog(@"Testing connection...");
-//	if (reachability.currentReachabilityStatus == NotReachable) {
-//		if ([self.manager.delegate respondsToSelector:@selector(connectionDropped)])
-//			[self.manager.delegate connectionDropped];
-////		[self showConnectionWarning]; // FIXME: figure out how to do this
-//		// TODO: offload this to some delegate/callback handler
-////		if (false/*connectionNotice == nil*/) {
-////			switch (self.primarySource.error.code) {
-////				default:
-////				case kCFURLErrorNotConnectedToInternet:
-//////					connectionNotice = [HUD showAlertWithTitle:@"No Connection" text:@"Your device does not appear to be connected to the internet. Please check your connection and come back."];
-////					break;
-////			
-//////				case kCFURLErrorCannotFindHost:
-//////				case kCFURLErrorCannotConnectToHost:
-//////					connectionNotice = [HUD showAlertWithTitle:@"Cannot Reach Server" text:@"I am having trouble reaching the mobile server. The server may be down or there may be something wrong with your internet connection."];
-//////					break;
-////			}
-////		} else {
-//////			[connectionNotice show:NO]; // make sure it stays visible (and isn't overridden by another HUD call)
-////		}
-//	} else {
-//		PRLog(@"Connection verified.");
-//		if ([self.manager.delegate respondsToSelector:@selector(connectionEstablished)])
-//			[self.manager.delegate connectionEstablished];
-////		[self hideConnectionWarning]; // FIXME: figure out how to do this
-//		[self.connectionTestTimer invalidate];
-//		[self reloadWithCompletion:nil force:YES];
-//	}
-//}
 
 - (PrestoMetadata *)getFromURL:(NSURL *)url {
 	self.source = [PrestoSource sourceWithURL:url method:@"GET" payload:nil];
@@ -1177,40 +776,9 @@ static id ValueForUndefinedKey;
 	return self;
 }
 
-// this method manually calls dependency blocks, but not completions
-// TODO: this logic is duplicated; should be moved into callDependencyBlocks:(BOOL)changed
-- (PrestoMetadata *)signalChange {
-//	__weak __block typeof(self) weakSelf = self;
-	
-	// this is replicated here because callSuccessBlocks calls both dependencies and completions; we should probably enhance that method to allow us to call it with options instead of replicating logic
-	
-	[self callSuccessBlocks:YES includeCompletions:NO];
-	
-//	for (PrestoCallbackRecord *callback in self.callbacks) {
-//		if (![callback isKindOfClass:[PrestoDependencyRecord class]])
-//			continue;
-//		PrestoDependencyRecord *dependency = (PrestoDependencyRecord *)callback;
-//		__strong id owner = dependency.owner;//strongTarget ?: rec.weakTarget;
-//		if (owner || !dependency.hasOwner) {
-//			dispatch_async(dispatch_get_main_queue(), ^{
-//				__strong typeof(weakSelf) strongSelf = weakSelf;
-//				dependency.success(strongSelf.target);
-//			});
-//		}
-//	}
-	
-//	[self.callbacks removeObjectsInArray:orphans]; // verify
-	
-	return self;
-}
-
 #pragma mark -
 
-// TODO: do we really need a force parameter?
-// also can we get rid of the source parameter now that objects only have one source?
-// maybe just rename loadSource
-- (void)loadFromSource:(BOOL)force {
-//	self.source = source;
+- (void)load:(BOOL)force {
 	PrestoSource *source = self.source;
 	
 	if (!source.url) {
@@ -1265,7 +833,7 @@ static id ValueForUndefinedKey;
 		
 		strongSelf.manager.activeRequests--; // FIXME: (nonurgent) this can technically not be called if weakSelf disappears, leaving activeRequests in an incorrect state
 			
-		BOOL changed = YES;//!source.lastPayload || ![data isEqualToData:source.lastPayload]; // TODO: reenable this
+		BOOL changed = !source.lastPayload || ![data isEqualToData:source.lastPayload];
 		// TODO: we should consider dropping this changed flag entirely, because it's quite possible that the client state could have changed and we need to reset it to the server state even if the server state has not itself actually changed
 		
 		source.isLoading = NO; // works better up here in case any of the callbacks register further callbacks
@@ -1302,7 +870,7 @@ static id ValueForUndefinedKey;
 		if (!strongSelf || !strongTarget) {
 			if (LOG_ZOMBIES)
 				PRLog(@"Presto: Target of source %@ has disappeared. Response will be ignored.", source);
-			return; // object has disappeared
+//			return; // object has disappeared
 		}
 		
 		if (source.error || source.statusCode != 200) {
@@ -1322,9 +890,9 @@ static id ValueForUndefinedKey;
 				// perhaps we should set the timeout to something less than 60 seconds by default
 				// or at least allow this to be customized. (we may have to switch to NSURLConnection)
 				source.error = nil; // we don't want this hanging around
-				[weakSelf performSelector:@selector(loadFromSource:) withObject:@YES afterDelay:2.0];
+				[weakSelf performSelector:@selector(load:) withObject:@YES afterDelay:2.0];
 //				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-//					[strongSelf loadFromSource:YES];
+//					[strongSelf load:YES];
 //				});
 				return;
 			}
@@ -1333,7 +901,7 @@ static id ValueForUndefinedKey;
 		} else {
 			if (changed)
 				[self loadResponse];
-			[strongSelf callSuccessBlocks:changed includeCompletions:YES];
+//			[strongSelf callSuccessBlocks:changed includeCompletions:YES];
 		}
 		
 //		if (!source.error && source.statusCode == 200) {
@@ -1346,13 +914,6 @@ static id ValueForUndefinedKey;
 //			[strongTarget objectDidLoad];
 //		}
 //		}
-		
-//		if (source.callback) {
-//			// pretty sure we're not using this--do we want source callbacks??
-//			prestoCallback callback = source.callback;
-//			source.callback = nil;
-//			callback(); // ok??
-//		}
 	}] resume];
 }
 
@@ -1360,8 +921,7 @@ static id ValueForUndefinedKey;
 	if (!self.source.lastPayload || !self.source.lastPayload.length)
 		return; // nothing to load
 	
-//	NSError* jsonError;
-	id jsonObject = [self lastResponseObject];//[NSJSONSerialization JSONObjectWithData:self.source.lastPayload options:NSJSONReadingMutableContainers error:&jsonError];
+	id jsonObject = [self lastResponseObject];
 	
 	// not sure if this is the best place for this
 	if (self.manager.connectionDropped) {
@@ -1380,35 +940,14 @@ static id ValueForUndefinedKey;
 		} else {
 			// TODO: do we want to transform the response in the event of an error??
 			id errorResponse = jsonObject;
-			if (self.errorClass && [jsonObject isKindOfClass:[NSDictionary class]])
-				errorResponse = [self.manager instantiateClass:self.errorClass withDictionary:jsonObject];
+			Class errorClass = self.errorClass ?: self.manager.defaultErrorClass;
+			if (errorClass && [jsonObject isKindOfClass:[NSDictionary class]])
+				errorResponse = [self.manager instantiateClass:errorClass withDictionary:jsonObject];
 			// TODO: add support for arrays using errorClass as the arrayClass
 			self.source.errorResponse = errorResponse;
 		}
 	}
 }
-
-//- (void)loadTarget {
-//	if (!self.source.lastPayload || !self.source.lastPayload.length)
-//		return; // nothing to load
-//	
-//	NSError* jsonError;
-//	id jsonObject = [NSJSONSerialization JSONObjectWithData:self.source.lastPayload options:0 error:&jsonError];
-//
-//	if (self.manager.connectionDropped) {
-//		self.manager.connectionDropped = NO;
-//		if ([self.manager.delegate respondsToSelector:@selector(connectionEstablished)])
-//			[self.manager.delegate connectionEstablished];
-//	}
-//	
-//	if (jsonObject) {
-//		jsonObject = [self.source transformResponse:jsonObject]; // or do we want to store jsonObject on the response and just call [transformResponse]?
-//		[self loadWithJSONObject:jsonObject];
-//		self.source.isLoaded = YES;
-//		
-//		NSAssert(self.source.error == nil, @"Source error should be nil here.");
-//	}
-//}
 
 - (BOOL)loadWithJSONString:(NSString *)json {
 	// should this set the lastPayload?
@@ -1429,14 +968,16 @@ static id ValueForUndefinedKey;
 		
 //	NSLog(@"strongSelf.arrayClass: %@", self.arrayClass);
 //	jsonObject = [self.manager transformResponse:jsonObject forClass:self.arrayClass ?: [strongTarget class]]; // improve this with a better response transformer associated with endpoint
-//	jsonObject = 
+//	jsonObject =
+
+	BOOL changed = NO;
 
 	if ([jsonObject isKindOfClass:[NSDictionary class]]) {
 //				if (source.targetProperty) {
 //					[strongSelf loadProperty:source.targetProperty withObject:jsonObject];
 ////					[strongSelf callSuccessBlocks:YES]; // TODO: improve this
 //				} else
-		return [self loadWithDictionary:jsonObject];
+		changed = [self loadWithDictionary:jsonObject];
 //		[source.serializationKeys addObjectsFromArray:[(NSDictionary *)jsonObject allKeys]]; // this is kind of a temp hack until we have a better solution
 	} else if ([jsonObject isKindOfClass:[NSArray class]]) {
 //				if (source.targetProperty) { // TODO: remove targetProperty entirely
@@ -1447,8 +988,14 @@ static id ValueForUndefinedKey;
 				if (LOG_WARNINGS)
 					PRLog(@"pRESTo Warning: Array responses must be loaded into instances of NSMutableArray.");
 			}
-			return [self loadWithArray:jsonObject];
+			changed = [self loadWithArray:jsonObject];
 //				}
+	} else if (!strongTarget) {
+		// experimental new case: just assign the jsonObject as the target
+		strongTarget = jsonObject;
+		self.weakTarget = strongTarget;
+		changed = true;
+		[self callSuccessBlocks:true];
 	} else {
 		if (LOG_ERRORS)
 			PRLog(@"pRESTo Error: Unsupported JSON object (%@) in response for %@.", [jsonObject class], [strongTarget class]);
@@ -1457,6 +1004,13 @@ static id ValueForUndefinedKey;
 //				strongSelf.error = [NSError new]; // could improve this but it's not an expected case
 		return NO;
 	}
+	
+//	[self callSuccessBlocks:changed];// includeCompletions:
+//	if (changed) {
+//		[self signalChange];
+//	}
+	
+	return changed;
 }
 
 // returns YES if changed
@@ -1496,13 +1050,21 @@ static id ValueForUndefinedKey;
 	
 //	self.dictionary = dictionary; // store pre-transformed version? (makes sense)
 	if ([strongTarget isKindOfClass:[NSMutableDictionary class]]) {
-		[(NSMutableDictionary *)strongTarget addEntriesFromDictionary:dictionary];
-//		for (NSString* key in [dictionary allKeys]) {
-//			NSObject *value = [dictionary valueForKey:key];
-//
-////			if (self.nativeClass && self.classDepth > 1)
-////				[value.presto withClass:self.nativeClass atDepth:self.classDepth - 1];
-//		}
+//		[(NSMutableDictionary *)strongTarget addEntriesFromDictionary:dictionary];
+//		changed = YES; // we have to assume this because addEntries doesn't tell us
+		for (NSString* key in dictionary) {
+			NSObject *value = [dictionary valueForKey:key];
+			NSObject *existing = [(NSMutableDictionary *)strongTarget valueForKey:key];
+
+			if (existing) {
+				changed = [existing.presto loadWithJSONObject:value] || changed;
+			} else {
+				[(NSMutableDictionary *)strongTarget setObject:value forKey:key];
+				changed = YES;
+			}
+//			if (self.nativeClass && self.classDepth > 1)
+//				[value.presto withClass:self.nativeClass atDepth:self.classDepth - 1];
+		}
 	} else { // assume we are a custom class (which means nativeClass is already applied)
 		for (NSString* key in dictionary) { // does this need allKeys?
 			NSString *propertyName = [self.manager propertyNameForField:key forClass:[self.target class]];
@@ -1526,7 +1088,8 @@ static id ValueForUndefinedKey;
 //	if (self.error != nil)
 //		NSAssert(self.error == nil, @"Error should be nil here!");
 //	self.error = nil;
-//	[self callSuccessBlocks:changed];
+	[self callSuccessBlocks:changed];
+	
 	return changed;
 }
 
@@ -1546,13 +1109,9 @@ static id ValueForUndefinedKey;
 	
 	BOOL changed = NO;
 //	NSMutableArray *strongTarget = self.target;
-	NSMutableArray *resultState = [NSMutableArray arrayWithCapacity:array.count];
+	NSMutableArray *tempResult = [NSMutableArray arrayWithCapacity:array.count];
 	
 	NSAssert([strongTarget isKindOfClass:[NSMutableArray class]], @"Cannot call loadWithArray: on anything other than NSMutableArray.");
-	
-//	if (!self.arrayClass && LOG_VERBOSE) {
-//		PRLog(@"Presto Notice: Loading an array without presto.arrayClass. The array will be loaded with raw JSON objects (NSArray/NSDictionary). Use the arrayOfClass: method to let Presto know what class the array should be filled with.");
-//	}
 	
 	if ([strongTarget respondsToSelector:@selector(objectWillLoad:)])
 		[(id)strongTarget objectWillLoad:array];
@@ -1567,32 +1126,29 @@ static id ValueForUndefinedKey;
 //			[instance.presto loadWithDictionary:elem];
 			instance = [self.manager instantiateClass:self.nativeClass withDictionary:elem];
 			// if we assume nativeClass only applies once, we should be done with it now
-			
+		}
 			// (experimental) this algorithm is now optimized for stable order arrays, but should still work in all cases
-//			BOOL found = NO;
-			NSUInteger count = strongTarget.count;
-			for (int i = lastIndex; i < count && i != (lastIndex - 1) % count; i = (i + 1) % count) {
-				NSObject *existing = strongTarget[i];
-				if ([existing isEqual:instance]) {
-					if (LOG_VERBOSE)
-						PRLog(@"Presto: Found existing object in array (%@). Will load in place.", [existing description]);
-					instance = existing;
-//					found = YES;
-					changed = [instance.presto loadWithDictionary:elem] || changed; // make sure it's ok to not call loadwithjsonobject // also this shoudl return BOOL changed
+		BOOL found = NO;
+		NSUInteger count = strongTarget.count;
+		for (int i = lastIndex; i < count && i != (lastIndex - 1) % count; i = (i + 1) % count) {
+			NSObject *existing = strongTarget[i];
+			if ([existing isEqual:instance]) {
+				if (LOG_VERBOSE)
+					PRLog(@"Presto: Found existing object in array (%@). Will load in place.", [existing description]);
+				instance = existing;
+				found = YES;
+				changed = [instance.presto loadWithDictionary:elem] || changed; // make sure it's ok to not call loadwithjsonobject // also this shoudl return BOOL changed
 //					[resultState addObject:existing];
-					[strongTarget removeObjectAtIndex:i]; // we don't technically need to remove the element, but it should make subsequent iterations quicker (unless removing itself is costly, i honestly don't know)
-					lastIndex = i;
-					break;
-				}
+				[strongTarget removeObjectAtIndex:i]; // we don't technically need to remove the element, but it should make subsequent iterations quicker (unless removing itself is costly, i honestly don't know)
+				lastIndex = i;
+				break;
 			}
+		}
 			
-//			if (!found) {
-//				changed = YES;
+		if (!found) {
+			changed = YES;
 //				[resultState addObject:instance];
-//			}
-		} //else {
-//			[resultState addObject:elem]; // just add it directly (no multidimensional arrays yet)
-//		}
+		}
 		
 		if (self.nativeClass && self.classDepth > 1)
 			[instance.presto withClass:self.nativeClass atDepth:self.classDepth - 1];
@@ -1601,17 +1157,19 @@ static id ValueForUndefinedKey;
 		if (self.manager.trackParentObjects)
 			instance.presto.parent = strongTarget;
 		
-		[resultState addObject:instance];
+		[tempResult addObject:instance];
 	}
 	
-	NSAssert(resultState.count == array.count, @"Array count mismatch!");
+	NSAssert(tempResult.count == array.count, @"Array count mismatch!");
 	
 	// if there are any elements left in strongTarget, they have since been removed
 	if (strongTarget.count)
 		changed = YES;
 	
 	[strongTarget removeAllObjects];
-	[strongTarget addObjectsFromArray:resultState];
+	[strongTarget addObjectsFromArray:tempResult];
+	
+	[self callSuccessBlocks:changed];
 
 	// this is not likely, but supports subclassing of NSArray
 	if ([strongTarget respondsToSelector:@selector(objectDidLoad)])
@@ -1643,17 +1201,11 @@ static id ValueForUndefinedKey;
 		return NO;
 	}
 	
-	if ((value == nil || value == [NSNull null]) && !self.manager.overwriteNulls) {
+	if ((value == nil || value == [NSNull null]) && self.manager.ignoreNulls) {
 		if (LOG_VERBOSE)
-			PRLog(@"Presto: Skipping null value for %@.%@.", class, propertyName);
+			PRLog(@"Presto: Ignoring null value for %@.%@.", class, propertyName);
 		return NO;
 	}
-	// i don't remember why i had this in here now :/
-//	if ([value isKindOfClass:[NSNumber class]] && ([value isEqualToNumber:@(0)] || [value isEqualToNumber:@(-1)]) && !self.manager.overwriteNulls) {
-//		if (LOG_VERBOSE)
-//			PRLog(@"Presto: Skipping 0 or -1 value for %@.%@.", class, propertyName);
-//		return NO;
-//	}
 	
 	Class propertyClass, protocolClass;
 	if ([value isKindOfClass:[NSDictionary class]] || [value isKindOfClass:[NSArray class]]) {
@@ -1793,9 +1345,6 @@ static id ValueForUndefinedKey;
 - (PrestoMetadata *)withClass:(Class)class atDepth:(int)depth {
 	self.nativeClass = class;
 	self.classDepth = depth;
-//	self.arrayClass = nil;
-
-	// TODO: i think we need to recurse here to turn an object into a class
 	
 	return self;
 }
@@ -1806,20 +1355,6 @@ static id ValueForUndefinedKey;
 	
 	return self;
 }
-
-// **deprecated**
-//- (id)objectOfClass:(Class)class {
-//	return [self withClass:class atDepth:0]; // 0 means the response is the object
-//}
-
-// should probably deprecate this now
-//- (id)arrayOfClass:(Class)class {
-//	return [self withClass:class atDepth:1];
-////	self.targetClass = [NSMutableArray class];
-////	self.arrayClass = class;
-////
-////	return self.target;
-//}
 
 #pragma mark -
 
@@ -1832,8 +1367,6 @@ static id ValueForUndefinedKey;
 }
 
 - (NSString *)toJSONStringWithTemplate:(id)template prettyPrinted:(BOOL)pretty {
-//	id jsonObj = [self toJSONObjectWithTemplate:template]; // temp
-	
 	return [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:[self toJSONObjectWithTemplate:template] options:pretty ? NSJSONWritingPrettyPrinted : 0 error:nil] encoding:NSUTF8StringEncoding];
 }
 
@@ -1946,21 +1479,8 @@ static id ValueForUndefinedKey;
 //		Class testClass = NSClassFromString(NSStringFromClass([self.target class]));
 		if (![self.manager shouldPropertyBeSerialized:propertyName forClass:self.targetClass])
 			continue;
-//		BOOL skip = NO;
-		// we should be able to get rid of this when we have proper serialization key handling
-//		for (PrestoSource *source in self.sources) {
-//			if (self.source.serializationKeys.count && ![self.source.serializationKeys containsObject:propertyName]) {
-//				continue;
-////				break;
-//			}
-//		}
+		
 		BOOL isBool = strcmp([propertyType UTF8String], @encode(BOOL)) == 0;
-//		if (skip)
-//			continue;
-//		PRLog(@"propertyName: %@", propertyName);
-		// TODO: add white/blacklisting
-
-//		PRLog(@"propertyName: %@", propertyName);
 		
 		id value = [self.target valueForKey:propertyName];
 		if (value == self.target)
@@ -2032,49 +1552,16 @@ static id ValueForUndefinedKey;
 	return self;
 }
 
-//- (PrestoMetadata *)addCompletion:(PrestoCallback)block withTarget:(id)target {
-//	[self addCompletion:block failure:nil withTarget:target];
-//	return self;
-//}
-
-//- (PrestoMetadata *)addCompletion:(PrestoCallback)success failure:(PrestoCallback)failure {
-//	[self addCompletion:success failure:failure withTarget:nil];
-//	return self;
-//}
-
-//- (void)addCompletion:(prestoCallback)success failure:(prestoCallback)failure withTarget:(id)target {
-//	[self addCompletion:success failure:failure forProperty:nil withTarget:target];
-////	if (self.isLoaded && !self.isLoading) { // if we are loading, wait until the load finishes (?)
-////		// should we wrap this in a dispatch_async?
-//////		PRLog(@"Calling success block immediately for object %@", self);
-////		success(); // call immediately
-////	} else {
-////		prestoCallbackRecord *rec = [prestoCallbackRecord new];
-////		rec.target = target;
-////		if (target)
-////			rec.hasTarget = YES;
-////		rec.success = success;
-////		rec.failure = failure;
-////		[self.primarySource.callbacks addObject:rec];
-////		
-//////		PRLog(@"Registering callback for %@.\nCallbacks: %@", self, self.callbacks);
-////		
-////		if (!self.isLoading)
-////			[self reload];
-////	}
-//}
-
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency {
-	return [self onChange:dependency withTarget:nil];
+	return [self onChange:dependency forLifetimeOf:nil];
 }
 
-// TODO: rename "target" here to something else... lifeline... something
-- (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target {
-	// TODO: fix this! this allows for group changes @[obj1, obj2].onChange
-//	if ([self.targetClass isSubclassOfClass:[NSArray class]] && ![self.targetClass isSubclassOfClass:[NSMutableArray class]] && !self.source.url && !self.arrayClass) {
-//		[self addSetDependency:dependency withTarget:target];
-//		return self;
-//	}
+- (PrestoMetadata *)onChange:(PrestoCallback)dependency forLifetimeOf:(id)target {
+	// this allows for group changes @[obj1, obj2].onChange
+	if ([self.targetClass isSubclassOfClass:[NSArray class]] && ![self.targetClass isSubclassOfClass:[NSMutableArray class]] && !self.source.url) {// && !self.arrayClass) {
+		[self addSetDependency:dependency forLifetimeOf:target];
+		return self;
+	}
 
 //	PrestoSource* source = [self sourceForProperty:property];
 	PrestoDependencyRecord* rec = [PrestoDependencyRecord new];
@@ -2105,22 +1592,18 @@ static id ValueForUndefinedKey;
 }
 
 - (PrestoMetadata *)onComplete:(PrestoCallback)success failure:(PrestoCallback)failure {
-	// TODO: fix this!
 	// if this is called on an immutable array, we assume it is an array of presto objects because immutable arrays can't be loaded dynamically
-//	if (self.targetClass == NSClassFromString(@"__NSArrayI") && ![self.targetClass isSubclassOfClass:[NSMutableArray class]] && !self.source.url && !self.arrayClass) {
-//		[self addSetCompletion:success failure:failure];
-//		return self;
-//	}
+	if (self.targetClass == NSClassFromString(@"__NSArrayI") && ![self.targetClass isSubclassOfClass:[NSMutableArray class]] && !self.source.url) {// && !self.arrayClass) {
+		[self addSetCompletion:success failure:failure];
+		return self;
+	}
 	
 //	PrestoSource* source = [self sourceForProperty:property];
 	if (self.isLoaded && !self.isLoading) {
-		success(self.target); // would there be any benefit in wrapping this in an async?
+		if (success)
+			success(self.target); // would there be any benefit in wrapping this in an async?
 	} else {
 		PrestoCompletionRecord* rec = [PrestoCompletionRecord new];
-//		if (target) {
-//			rec.weakTarget = target;
-//			rec.hasTarget = YES;
-//		}
 		rec.target = self.weakTarget; // completions keep the target alive and are guaranteed to fire (in theory)
 		rec.success = success;
 		rec.failure = failure;
@@ -2170,11 +1653,6 @@ static id ValueForUndefinedKey;
 		BOOL allLoaded = YES;
 		
 		for (NSObject *elem in arrayTarget) {
-//			if (![elem isKindOfClass:[RemoteObject class]])
-//				continue; // skip any non-remote object elements (or fail??)
-//			RemoteObject* obj = (RemoteObject*)elem;
-//			if (obj.loading)
-//				PRLog(@"shouldn't be still loading!!");
 			if (!elem.presto.isCompleted || [elem.presto loadingSince:timestamp]) {
 				if (LOG_VERBOSE)
 					PRLog(@"Array element %@ %@ failed completion check. array timestamp: %f", elem.presto, elem, [timestamp timeIntervalSinceReferenceDate]);
@@ -2192,10 +1670,13 @@ static id ValueForUndefinedKey;
 					break;
 				}
 			}
-			if (allSucceeded || !failure)
-				success(arrayTarget);
-			else
-				failure(arrayTarget);
+			if (allSucceeded || !failure) {
+				if (success)
+					success(arrayTarget);
+			} else {
+				if (failure)
+					failure(arrayTarget);
+			}
 //			arrayTarget = nil; // this was above success() does it need to be?
 		}
 	};
@@ -2208,10 +1689,10 @@ static id ValueForUndefinedKey;
 	}
 }
 
-- (void)addSetDependency:(PrestoCallback)dependency withTarget:(id)target {
+- (void)addSetDependency:(PrestoCallback)dependency forLifetimeOf:(id)target {
 	// TODO: is this really all we have to do here?
 	for (NSObject *elem in self.target) {
-		[elem.presto onChange:dependency withTarget:target];
+		[elem.presto onChange:dependency forLifetimeOf:target];
 	}
 }
 
@@ -2224,18 +1705,9 @@ static id ValueForUndefinedKey;
 	return self;
 }
 
-// abstract this to addCompletionForSource or something internally so we can reuse it
-// or we can just pass nil for property
-//- (void)addCompletion:(prestoCallback)success failure:(prestoCallback)failure forProperty:(NSString *)property withTarget:(id)target {
-//}
-//
-//- (void)onChange:(prestoCallback)dependency forProperty:(NSString *)property withTarget:(id)target {
-//
-//}
-
 #pragma mark -
 
-- (void)callSuccessBlocks:(BOOL)changed includeCompletions:(BOOL)includeCompletions {
+- (void)callSuccessBlocks:(BOOL)changed {// includeCompletions:(BOOL)includeCompletions {
 //	if (!self.isLoaded)
 //		return;
 	
@@ -2252,6 +1724,8 @@ static id ValueForUndefinedKey;
 	__weak __block typeof(self) weakSelf = self;
 	NSArray *callbacks = [self.callbacks copy];
 	
+	__block id target = self.target; // verify: does this create a retain cycle?
+	
 	// experimental: it makes sense to me that dependencies be considered higher priority than completions, as completions only execute once, it makes sense that they execute *after* the dependencies, but i'm not sure this makes sense
 	// it may be a better idea to simply call these in whatever order they are registered in, and to not have two separate collections of dependencies vs. completions, but rather a flag to indicate which type each record is
 	
@@ -2262,67 +1736,35 @@ static id ValueForUndefinedKey;
 	
 	for (PrestoCallbackRecord *callback in callbacks) {
 		if ([callback isKindOfClass:[PrestoCompletionRecord class]]) {
-			if (includeCompletions) {
+//			if (includeCompletions) {
 				PrestoCompletionRecord *completion = (PrestoCompletionRecord *)callback;
 				// FIXME: make sure this dispatch is enabled for release!
-				dispatch_async(dispatch_get_main_queue(), ^{
-					__strong typeof(weakSelf) strongSelf = weakSelf;
-					completion.success(strongSelf.target);
-				});
+				if (completion.success) { // it's possible we may have a failure-only callback
+					dispatch_async(dispatch_get_main_queue(), ^{
+	//					__strong typeof(weakSelf) strongSelf = weakSelf;
+	//					completion.success(strongSelf.target);
+							completion.success(target); // is this safe?
+					});
+				}
 				[self.callbacks removeObject:completion];
-			}
+//			}
 		} else if (changed && [callback isKindOfClass:[PrestoDependencyRecord class]]) {
 			PrestoDependencyRecord *dependency = (PrestoDependencyRecord *)callback;
 			__strong id owner = dependency.owner;
 			if (owner || !dependency.hasOwner) {
-				dispatch_async(dispatch_get_main_queue(), ^{
-					__strong typeof(weakSelf) strongSelf = weakSelf;
-					dependency.success(strongSelf.target);
-				});
+				if (dependency.success) { // i don't think this is a concern, but just being careful
+					dispatch_async(dispatch_get_main_queue(), ^{
+						__strong typeof(weakSelf) strongSelf = weakSelf;
+						dependency.success(strongSelf.target);
+					});
+				}
 			} else if (dependency.hasOwner) {
 				if (LOG_VERBOSE)
-					PRLog(@"Dependency’s owner has disappeared. Removing dependency.");
+					PRLog(@"Dependency’s lifetime target has disappeared. Removing dependency.");
 				[self.callbacks removeObject:dependency];
 			}
 		}
 	}
-	
-//	// FIXME: using changed here could be dangerous if the dependency was added after the last change
-//	// actually maybe not, because it should have been called immediately anyway
-//	// what if it was loading when added, and now the load is completed!
-//	if (changed) { // TODO: maybe changed should actually be an NSDate so we can know if it's changed *since* a dependency was added. yes, do this.
-//		for (PrestoCallbackRecord* rec in self.dependencies) {
-//			__strong id target = rec.strongTarget ?: rec.weakTarget;
-//			if (target || !rec.hasTarget) {
-//				dispatch_async(dispatch_get_main_queue(), ^{
-//					__strong typeof(weakSelf) strongSelf = weakSelf;
-//					rec.success(strongSelf.target);
-//				});
-//			}
-//			// FIXME: we have to remove the callback records for dead targets
-//		}
-//	}
-//	
-//	while (self.completions.count) {
-//		NSArray* completions = [self.completions copy];
-//		[self.completions removeAllObjects];
-//		for (PrestoCallbackRecord* rec in completions) {
-//			__strong id target = rec.strongTarget ?: rec.weakTarget;
-//			if (target || !rec.hasTarget) {
-//				// the following dispatch prevents reentrancy which can cause problems
-//				
-//				// FIXME: make sure this dispatch is enabled for release!
-//				dispatch_async(dispatch_get_main_queue(), ^{
-//					__strong typeof(weakSelf) strongSelf = weakSelf;
-//					rec.success(strongSelf.target);
-//				});
-//			}
-//		}
-////		[self.callbacks removeObjectsInArray:callbacks];
-////		PRLog(@"Done success block wave, removing called callbacks (%d remaining).", self.callbacks.count);
-//	}
-	
-
 }
 
 - (void)callFailureBlocks:(BOOL)changed {
@@ -2332,25 +1774,16 @@ static id ValueForUndefinedKey;
 	NSArray *callbacks = [self.callbacks copy];
 	
 	for (PrestoCallbackRecord *callback in callbacks) {
-//		if (![callback isKindOfClass:[PrestoCompletionRecord class]])
-//			continue;
-		
-//		
-//		if ([callback isKindOfClass:[PrestoCompletionRecord class]]) {
-//			PrestoCompletionRecord *completion = (PrestoCompletionRecord *)callback;
-			// FIXME: make sure this dispatch is enabled for release!
 		if ([callback isKindOfClass:[PrestoCompletionRecord class]]) {
-//			PrestoCompletionRecord *completion = (PrestoCompletionRecord *)callback;
 			dispatch_async(dispatch_get_main_queue(), ^{
 				__strong typeof(weakSelf) strongSelf = weakSelf;
 				if (callback.failure)
 					callback.failure(strongSelf.target);
-				else
+				else if (callback.success)
 					callback.success(strongSelf.target);
 			});
 			[self.callbacks removeObject:callback];
 		} else if ([callback isKindOfClass:[PrestoDependencyRecord class]]) {
-//			PrestoDependencyRecord *dependency = (PrestoDependencyRecord *)callback;
 			if (callback.failure) { // we only call explicit failure blocks on dependencies
 				dispatch_async(dispatch_get_main_queue(), ^{
 					__strong typeof(weakSelf) strongSelf = weakSelf;
@@ -2358,57 +1791,7 @@ static id ValueForUndefinedKey;
 				});
 			}
 		}
-//		} else if (changed && [callback isKindOfClass:[PrestoDependencyRecord class]]) {
-//			PrestoDependencyRecord *dependency = (PrestoDependencyRecord *)callback;
-//			__strong id owner = dependency.owner;
-//			if (owner || !dependency.hasOwner) {
-//				dispatch_async(dispatch_get_main_queue(), ^{
-//					__strong typeof(weakSelf) strongSelf = weakSelf;
-//					dependency.success(strongSelf.target);
-//				});
-//			} else if (dependency.hasOwner) {
-//				[self.callbacks removeObject:dependency];
-//			}
-//		}
 	}
-	
-	// i'm actually not sure we should be calling dependencies on failure at all. completions, yes, because they need to complete, but calling dependencies really only makes sense if the load was successful, no?
-	// let's try only calling explicit failure blocks in dependencies and see how that works. this may end up being a bad idea, but it also simplifies the implementation of dependencies so that they don't have to always check for success first.
-	
-////	if (changed) {
-//	// TODO: remove calling dependencies on failure
-//	for (PrestoCallbackRecord* rec in self.dependencies) {
-//		NSLog(@"calling dependency in failure handler %@", rec);
-//		__strong id target = rec.strongTarget ?: rec.weakTarget;
-//		if (target || !rec.hasTarget) {
-//			dispatch_async(dispatch_get_main_queue(), ^{
-//				__strong typeof(weakSelf) strongSelf = weakSelf;
-//				if (rec.failure)
-//					rec.failure(strongSelf.target);
-////				else
-////					rec.success(strongSelf.target);
-//			});
-//		}
-//		// FIXME: we have to remove the callback records for dead targets
-//	}
-////	}
-//	
-//	while (self.completions.count) { // see above
-//		NSArray* callbacks = [self.completions copy];
-//		[self.completions removeAllObjects];
-//		for (PrestoCallbackRecord* rec in callbacks) {
-//			__strong id target = rec.strongTarget ?: rec.weakTarget;
-//			if (target || !rec.hasTarget) {
-//				dispatch_async(dispatch_get_main_queue(), ^{
-//					__strong typeof(weakSelf) strongSelf = weakSelf;
-//					if (rec.failure)
-//						rec.failure(strongSelf.target);
-//					else
-//						rec.success(strongSelf.target);
-//				});
-//			}
-//		}
-//	}
 }
 
 #pragma mark -
@@ -2443,12 +1826,12 @@ static id ValueForUndefinedKey;
 		return (id)self; // experimental. allows calling .presto without worry
 	
 	if (objc_getAssociatedObject(self, @selector(presto)) == nil)
-		[self setupMetadata];
+		[self installMetadata];
 	
 	return objc_getAssociatedObject(self, @selector(presto));
 }
 
-- (void)setupMetadata {
+- (void)installMetadata {
 	if ([self isKindOfClass:[PrestoMetadata class]])
 		NSAssert(![self isKindOfClass:[PrestoMetadata class]], @"Presto! metadata cannot be installed recursively upon itself. This is probably an indication something else is wrong somewhere. Set a breakpoint here and trace back.");
 //	if (LOG_VERBOSE)
@@ -2463,54 +1846,5 @@ static id ValueForUndefinedKey;
 }
 
 @end
-
-//#pragma mark - NSArray (Presto)
-//
-//@implementation NSArray (Presto)
-//
-//+ (id)arrayOfClass:(Class)class {
-//	NSMutableArray *array = [NSMutableArray new];
-//	array.presto.arrayClass = class;
-//	return array;
-//}
-//
-////+ (id)arrayOfClass:(Class)class loadedFromURL:(NSURL *)url {
-////	NSArray *array = [self arrayOfClass:class];
-////	[array.presto loadFromURL:url];
-////	return array;
-////}
-//
-//#pragma mark -
-//
-////- (void)addCompletion:(PrestoCallback)success {
-////	[self addCompletion:success withTarget:nil];
-////}
-//
-//// we should actually move this into Metadata and expose it optionally like NSObject
-//
-//
-//
-//@end
-
-//#pragma mark - NSMutableArray (presto)
-//
-//@implementation NSMutableArray (presto)
-//
-////+ (instancetype)newWithMemberType:(Class)class; {
-////
-////}
-//
-////+ (instancetype)newWithMemberType:(Class)class {
-////	NSMutableArray* new = [NSMutableArray new];
-//////	new.memberType = class;
-////	return new;
-////}
-//
-//- (void)loadFromURL:(NSURL *)url elementClass:(Class)class {
-//	self.presto.elementClass = class;
-//	[self.presto loadFromURL:url];
-//}
-//
-//@end
 
 #undef PRLog

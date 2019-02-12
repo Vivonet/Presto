@@ -96,6 +96,6 @@
 - (PrestoMetadata *)onComplete:(PrestoCallback)completion;
 - (PrestoMetadata *)onComplete:(PrestoCallback)success failure:(PrestoCallback)failure;
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency;
-- (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target;
+- (PrestoMetadata *)onChange:(PrestoCallback)dependency forLifetimeOf:(id)target;
 
 @end

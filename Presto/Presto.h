@@ -28,7 +28,7 @@
 //  An Objective-C REST Framework
 //  Designed and implemented by Logan Murray
 //  
-//  https://github.com/devios1/presto
+//  https://github.com/devios1/Presto
 
 #import <Foundation/Foundation.h>
 
@@ -79,22 +79,10 @@ typedef id (^PrestoResponseTransformer)(id response); // sent the decoded JSON o
 @property (nonatomic) NSInteger activeRequests;
 @property (nonatomic) BOOL trackParentObjects; // default YES
 @property (nonatomic) BOOL showActivityIndicator; // default YES
-@property (nonatomic) BOOL overwriteNulls; // default NO -- when NO, in-place loading skips over null-valued fields instead of replacing the existing value
+@property (nonatomic) BOOL ignoreNulls; // default YES -- when YES, in-place loading skips over null-valued fields in the response instead of overwriting the existing value with null
 
 + (Presto *)defaultInstance;
 + (Class)defaultErrorClass;
-
-/**
-	Provides an alternate means of instantiating a class.
-	
-	This is effectively equivalent to just instantiating the class normally except that the PrestoMetadata instance is also created immediately at this time. It is included mainly for syntactic symmetry.
-*/
-//+ (id)objectOfClass:(Class)class; **deprecated**
-
-/**
-	Instantiates an empty typed `NSMutableArray` instance. Similar to simply instantiating an `NSMutableArray` directly, except that the array knows what class of object it contains. This is important for arrays that are to be loaded remotely from a subsequent Presto call.
-*/
-//+ (id)arrayOfClass:(Class)class; **deprecated**
 
 // these are duplicated here for convenience and apply to [Presto defaultInstance]
 + (void)globallyMapRemoteField:(NSString *)field toLocalProperty:(NSString *)property;
@@ -266,7 +254,7 @@ typedef id (^PrestoResponseTransformer)(id response); // sent the decoded JSON o
 */
 - (PrestoMetadata *)deferLoad;
 - (PrestoMetadata *)invalidate;
-- (PrestoMetadata *)signalChange; // experimental--calls dependency blocks manually
+//- (PrestoMetadata *)signalChange; // **deprecated**
 
 // note that calling these does not immediately load the object (that happens when you add a completion or dependency)
 
@@ -305,7 +293,6 @@ typedef id (^PrestoResponseTransformer)(id response); // sent the decoded JSON o
 //- (void)putAndLoad; // assumes the response of the PUT is the current state of the object
 //- (void)postAndLoadSelf; // you really shouldn't need to use this one if your API is properly implemented; POST should always create a new object, so it doesn't make sense to reload an existing object with its result
 
-//- (void)loadFromSource:(PrestoSource *)source force:(BOOL)force;
 - (BOOL)loadWithJSONString:(NSString *)json;
 - (BOOL)loadWithJSONObject:(id)jsonObject;
 - (BOOL)loadWithDictionary:(NSDictionary *)dictionary;
@@ -343,9 +330,8 @@ typedef id (^PrestoResponseTransformer)(id response); // sent the decoded JSON o
 - (PrestoMetadata *)onComplete:(PrestoCallback)completion;
 - (PrestoMetadata *)onComplete:(PrestoCallback)success failure:(PrestoCallback)failure;
 
-// TODO: consider changing "withTarget" to "withViewController" since that's really its intended purpose
 - (PrestoMetadata *)onChange:(PrestoCallback)dependency;
-- (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target;
+- (PrestoMetadata *)onChange:(PrestoCallback)dependency forLifetimeOf:(id)target;
 
 - (PrestoMetadata *)clearDependencies; // TODO: we need a better way to identify dependencies so individual ones can be removed
 // i actually wonder if we should use a target/selector pattern instead…

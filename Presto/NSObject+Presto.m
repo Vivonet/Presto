@@ -122,8 +122,8 @@
 	return [self.presto onChange:dependency];
 }
 
-- (PrestoMetadata *)onChange:(PrestoCallback)dependency withTarget:(id)target {
-	return [self.presto onChange:dependency withTarget:target];
+- (PrestoMetadata *)onChange:(PrestoCallback)dependency forLifetimeOf:(id)target {
+	return [self.presto onChange:dependency forLifetimeOf:target];
 }
 
 @end
